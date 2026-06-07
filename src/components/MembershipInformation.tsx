@@ -1016,7 +1016,7 @@ export default function MembershipInformation({
                       if (editingId === memberToDelete.id) cancelEdit();
                       setMemberToDelete(null);
                     }}
-                    className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-all cursor-pointer flex items-center gap-1 font-sans"
+                    className="px-5 py-2 text-xs font-black uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 font-sans border-none shadow-md shadow-rose-205 ring-2 ring-rose-500 ring-offset-2 animate-pulse hover:animate-none scale-102 hover:scale-105"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     <span>Confirm Delete</span>

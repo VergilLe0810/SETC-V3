@@ -14,6 +14,8 @@ import {
   Square, 
   Plus, 
   ChevronDown, 
+  ChevronLeft,
+  ChevronRight,
   Clock, 
   UserCheck, 
   X,
@@ -45,6 +47,7 @@ interface DashboardStatsProps {
 }
 
 export default function DashboardStats({ 
+  courses,
   sessions, 
   activeMonth, 
   setActiveMonth,
@@ -64,6 +67,10 @@ export default function DashboardStats({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isDayDropdownOpen, setIsDayDropdownOpen] = useState(false);
   const [isYearDropdownOpen, setIsYearDropdownOpen] = useState(false);
+
+  // States for interactive task monitor modals
+  const [activeModal, setActiveModal] = useState<'ongoing' | 'upcoming' | 'your_tasks' | null>(null);
+  const [modalTab, setModalTab] = useState<'mine' | 'all'>('mine');
   
   // 1. Determine real-time dates for statistics, tasks, and birthdays display
   const realTimeNow = React.useMemo(() => new Date(), []);
@@ -114,9 +121,54 @@ export default function DashboardStats({
 
   const monthDaysList = getDaysForMonth(activeMonth, activeYear);
 
-  // Use real-time for session-based stats (Today Courses, Active Classrooms, Upcoming Courses)
+  const loggedInMember = React.useMemo(() => {
+    return members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase());
+  }, [members, currentUserEmail]);
+
+  const currentUserLevel = React.useMemo(() => {
+    return loggedInMember?.authorizedLevel?.toLowerCase() || 
+      (currentUserEmail.toLowerCase() === 'setcadmin' || 
+       currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org' ? 'level 4' : 'level 1');
+  }, [loggedInMember, currentUserEmail]);
+
+  const loggedInName = React.useMemo(() => {
+    return loggedInMember ? loggedInMember.name : (currentUserEmail === 'setcadmin' ? 'SETC Creator Admin' : currentUserEmail.split('@')[0]);
+  }, [loggedInMember, currentUserEmail]);
+
+  const isLevel1SpecificMembership = currentUserLevel === 'level 1';
+
+  const filteredSessions = React.useMemo(() => {
+    if (isLevel1SpecificMembership) {
+      const nameLower = loggedInName.toLowerCase();
+      return sessions.filter(s => 
+        s.instructor.toLowerCase().includes(nameLower) || 
+        (s.taOfficer && s.taOfficer.toLowerCase().includes(nameLower)) ||
+        (s.tgOfficer && s.tgOfficer.toLowerCase().includes(nameLower)) ||
+        (s.notes && s.notes.toLowerCase().includes(nameLower)) ||
+        s.enrolledIds?.some(id => id.toLowerCase().includes(nameLower))
+      );
+    }
+    return sessions;
+  }, [sessions, isLevel1SpecificMembership, loggedInName]);
+
+  const filteredTasks = React.useMemo(() => {
+    if (isLevel1SpecificMembership) {
+      const nameLower = loggedInName.toLowerCase();
+      const emailLower = currentUserEmail.toLowerCase();
+      return tasks.filter(t => 
+        t.assignedTo.toLowerCase() === emailLower || 
+        t.title.toLowerCase().includes(nameLower) || 
+        t.description.toLowerCase().includes(nameLower) ||
+        (t.instructor && t.instructor.toLowerCase().includes(nameLower)) ||
+        (t.taOfficer && t.taOfficer.toLowerCase().includes(nameLower)) ||
+        (t.tgOfficer && t.tgOfficer.toLowerCase().includes(nameLower))
+      );
+    }
+    return tasks;
+  }, [tasks, isLevel1SpecificMembership, loggedInName, currentUserEmail]);
+
   const realTimeTodayCourses = React.useMemo(() => {
-    return sessions.filter(s => {
+    return filteredSessions.filter(s => {
       const start = new Date(s.startDate);
       const end = new Date(s.endDate);
       const today = new Date(realTimeTodayStr);
@@ -125,7 +177,7 @@ export default function DashboardStats({
       today.setHours(0,0,0,0);
       return today >= start && today <= end;
     });
-  }, [sessions, realTimeTodayStr]);
+  }, [filteredSessions, realTimeTodayStr]);
 
   const realTime7DaysLaterStr = React.useMemo(() => {
     const future = new Date(realTimeNow);
@@ -137,11 +189,11 @@ export default function DashboardStats({
   }, [realTimeNow]);
 
   const realTimeUpcoming = React.useMemo(() => {
-    return sessions.filter(s => {
+    return filteredSessions.filter(s => {
       // Show courses starting in next 7 days (and not already completed/started today)
       return s.startDate > realTimeTodayStr && s.startDate <= realTime7DaysLaterStr;
     });
-  }, [sessions, realTimeTodayStr, realTime7DaysLaterStr]);
+  }, [filteredSessions, realTimeTodayStr, realTime7DaysLaterStr]);
 
   const realTimeActiveClassroomsCount = React.useMemo(() => {
     return new Set(realTimeTodayCourses.map(s => s.classroom)).size;
@@ -149,21 +201,187 @@ export default function DashboardStats({
 
   // Use real-time filtered tasks for the selected member
   const realTimeMemberTasks = React.useMemo(() => {
-    return tasks.filter(t => {
-      const belongsToMember = t.assignedTo.toLowerCase() === selectedMemberEmail.toLowerCase();
+    return filteredTasks.filter(t => {
+      const belongsToMember = t.assignedTo.toLowerCase() === selectedMemberEmail.toLowerCase() || 
+        (isLevel1SpecificMembership && t.assignedTo.toLowerCase() === currentUserEmail.toLowerCase());
       // Tasks are in current real-time month range
       const belongsToRange = t.dueDate >= realTimeFilterStartStr && t.dueDate <= realTimeFilterEndStr;
       return belongsToMember && belongsToRange;
     });
-  }, [tasks, selectedMemberEmail, realTimeFilterStartStr, realTimeFilterEndStr]);
+  }, [filteredTasks, selectedMemberEmail, currentUserEmail, isLevel1SpecificMembership, realTimeFilterStartStr, realTimeFilterEndStr]);
 
   const realTimePendingCount = React.useMemo(() => {
     return realTimeMemberTasks.filter(t => t.status !== 'Completed').length;
   }, [realTimeMemberTasks]);
 
-  // Use real-time filtered birthdays
+  const realTimeCompletedCount = React.useMemo(() => {
+    return realTimeMemberTasks.filter(t => t.status === 'Completed').length;
+  }, [realTimeMemberTasks]);
+
+  const pendingTasks = React.useMemo(() => {
+    return realTimeMemberTasks.filter(t => t.status !== 'Completed');
+  }, [realTimeMemberTasks]);
+
+  const completedTasks = React.useMemo(() => {
+    return realTimeMemberTasks.filter(t => t.status === 'Completed');
+  }, [realTimeMemberTasks]);
+
+  // Derived session lists and helper roles for the modals
+  const loggedInMemberSessions = React.useMemo(() => {
+    const nameLower = loggedInName.toLowerCase();
+    const emailLower = currentUserEmail.toLowerCase();
+    return sessions.filter(s => 
+      s.instructor.toLowerCase().includes(nameLower) || 
+      (s.taOfficer && s.taOfficer.toLowerCase().includes(nameLower)) ||
+      (s.tgOfficer && s.tgOfficer.toLowerCase().includes(nameLower)) ||
+      (s.notes && s.notes.toLowerCase().includes(nameLower)) ||
+      s.enrolledIds?.some(id => id.toLowerCase().includes(nameLower) || id.toLowerCase().includes(emailLower))
+    );
+  }, [sessions, loggedInName, currentUserEmail]);
+
+  const loggedInOngoingSessions = React.useMemo(() => {
+    return loggedInMemberSessions.filter(s => {
+      const start = new Date(s.startDate);
+      const end = new Date(s.endDate);
+      const today = new Date(realTimeTodayStr);
+      start.setHours(0,0,0,0);
+      end.setHours(0,0,0,0);
+      today.setHours(0,0,0,0);
+      return today >= start && today <= end;
+    });
+  }, [loggedInMemberSessions, realTimeTodayStr]);
+
+  const allOngoingSessions = React.useMemo(() => {
+    return sessions.filter(s => {
+      const start = new Date(s.startDate);
+      const end = new Date(s.endDate);
+      const today = new Date(realTimeTodayStr);
+      start.setHours(0,0,0,0);
+      end.setHours(0,0,0,0);
+      today.setHours(0,0,0,0);
+      return today >= start && today <= end;
+    });
+  }, [sessions, realTimeTodayStr]);
+
+  const loggedInUpcomingSessions = React.useMemo(() => {
+    return loggedInMemberSessions.filter(s => {
+      return s.startDate > realTimeTodayStr;
+    });
+  }, [loggedInMemberSessions, realTimeTodayStr]);
+
+  const allUpcomingSessions = React.useMemo(() => {
+    return sessions.filter(s => {
+      return s.startDate > realTimeTodayStr;
+    });
+  }, [sessions, realTimeTodayStr]);
+
+  const loggedInTasks = React.useMemo(() => {
+    const emailLower = currentUserEmail.toLowerCase();
+    return tasks.filter(t => t.assignedTo.toLowerCase() === emailLower);
+  }, [tasks, currentUserEmail]);
+
+  const getCourseForSession = (courseId: string) => {
+    return courses.find(c => c.id === courseId) || { code: 'N/A', title: 'Unknown Course', category: 'N/A', level: 'Basic' };
+  };
+
+  const getRoleForSession = (session: CourseSession) => {
+    const name = loggedInName.toLowerCase();
+    const email = currentUserEmail.toLowerCase();
+    const roles: string[] = [];
+    if (session.instructor.toLowerCase().includes(name)) roles.push('Instructor');
+    if (session.taOfficer && session.taOfficer.toLowerCase().includes(name)) roles.push('TA');
+    if (session.tgOfficer && session.tgOfficer.toLowerCase().includes(name)) roles.push('TG');
+    if (session.notes && session.notes.toLowerCase().includes(name)) roles.push('Coordinator');
+    if (session.enrolledIds?.some(id => id.toLowerCase().includes(name) || id.toLowerCase().includes(email))) roles.push('Enrolled');
+    return roles.join(', ') || 'Participant';
+  };
+
+  const renderSessionsTable = (sessionsList: CourseSession[]) => {
+    if (sessionsList.length === 0) {
+      return (
+        <div className="text-center py-10 bg-white border border-slate-200/80 rounded-xl">
+          <p className="text-slate-400 text-xs font-semibold italic">No courses/sessions scheduled under this category.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 uppercase text-[9.5px] font-bold tracking-wider border-b border-slate-100">
+                <th className="p-3">Course Code</th>
+                <th className="p-3">Course Title</th>
+                <th className="p-3">Dates & Hours</th>
+                <th className="p-3">Method & Class</th>
+                <th className="p-3">My Assigned Role</th>
+                <th className="p-3 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-750 font-medium">
+              {sessionsList.map(s => {
+                const c = getCourseForSession(s.courseId);
+                const role = getRoleForSession(s);
+                const status = getSessionStatus(s.startDate, s.endDate, realTimeTodayStr);
+
+                return (
+                  <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-3 whitespace-nowrap">
+                      <span className="font-mono font-black text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase">
+                        {c.code}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="text-slate-900 font-bold max-w-xs md:max-w-sm truncate text-left" title={c.title}>
+                        {c.title}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-semibold text-left">{c.category} ({c.level || 'Basic'})</div>
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-left">
+                      <div className="text-slate-800 font-semibold font-mono">{formatDate(s.startDate)} → {formatDate(s.endDate)}</div>
+                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">{s.startTime} - {s.endTime}</div>
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-left">
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className={`text-[9px] font-black font-mono px-1.5 py-0.2 rounded uppercase ${
+                          s.method === 'Online' ? 'bg-sky-100 text-sky-850' : 'bg-emerald-105 text-emerald-850 bg-emerald-100'
+                        }`}>
+                          {s.method || 'Offline'}
+                        </span>
+                      </div>
+                      <div className="text-slate-500 font-semibold">{s.classroom}</div>
+                    </td>
+                    <td className="p-3 text-left">
+                      <span className="text-[10.5px] font-bold text-slate-805 bg-slate-100/60 border border-slate-200 rounded px-2 py-0.5 whitespace-nowrap">
+                        {role}
+                      </span>
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-right">
+                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                        status === 'ON-GOING' 
+                          ? 'bg-emerald-100 text-emerald-800 animate-pulse' 
+                          : status === 'COMPLETED' 
+                            ? 'bg-slate-100 text-slate-500' 
+                            : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Use real-time filtered birthdays - upcoming in the current calendar year
   const realTimeBirthdayMembers = React.useMemo(() => {
     const todayRef = new Date(realTimeYear, realTimeMonthIdx, realTimeDay);
+    todayRef.setHours(0, 0, 0, 0);
 
     return members
       .filter((m) => {
@@ -175,28 +393,23 @@ export default function DashboardStats({
 
         const birthDate = new Date(m.dob);
         if (isNaN(birthDate.getTime())) return false;
-        return birthDate.getMonth() === realTimeMonthIdx;
+
+        // Birthday in current year
+        const bdayThisYear = new Date(realTimeYear, birthDate.getMonth(), birthDate.getDate());
+        bdayThisYear.setHours(0, 0, 0, 0);
+
+        // Filter: must be on or after today AND in the current year
+        return bdayThisYear >= todayRef && bdayThisYear.getFullYear() === realTimeYear;
       })
       .map((m) => {
         const birthDate = new Date(m.dob);
+        const bdayThisYear = new Date(realTimeYear, birthDate.getMonth(), birthDate.getDate());
+        bdayThisYear.setHours(0, 0, 0, 0);
 
-        let age = todayRef.getFullYear() - birthDate.getFullYear();
-        const mDiff = todayRef.getMonth() - birthDate.getMonth();
-        const dDiff = todayRef.getDate() - birthDate.getDate();
-        if (mDiff < 0 || (mDiff === 0 && dDiff < 0)) {
-          age--;
-        }
+        let age = realTimeYear - birthDate.getFullYear();
 
-        let nextYear = todayRef.getFullYear();
-        let nextBday = new Date(nextYear, birthDate.getMonth(), birthDate.getDate());
-
-        if (nextBday < todayRef) {
-          nextYear += 1;
-          nextBday = new Date(nextYear, birthDate.getMonth(), birthDate.getDate());
-        }
-
-        const t1 = new Date(todayRef.getFullYear(), todayRef.getMonth(), todayRef.getDate()).getTime();
-        const t2 = new Date(nextBday.getFullYear(), nextBday.getMonth(), nextBday.getDate()).getTime();
+        const t1 = todayRef.getTime();
+        const t2 = bdayThisYear.getTime();
         const daysRemaining = Math.max(0, Math.round((t2 - t1) / (1000 * 60 * 60 * 24)));
 
         const isToday = daysRemaining === 0;
@@ -205,7 +418,7 @@ export default function DashboardStats({
           member: m,
           formattedDob: formatDate(m.dob),
           age,
-          nextBdayStr: formatDate(nextBday),
+          nextBdayStr: formatDate(bdayThisYear),
           daysRemaining,
           isToday,
         };
@@ -217,6 +430,14 @@ export default function DashboardStats({
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
         const nextStatus = t.status === 'Completed' ? 'Pending' : 'Completed';
+        if (nextStatus === 'Completed') {
+          const isCourseTask = !!t.sessionId;
+          const endDate = t.endDate || t.dueDate;
+          const isFinished = !isCourseTask || (endDate < realTimeTodayStr);
+          if (!isFinished) {
+            return t; // Prevent checking/marking completed
+          }
+        }
         return { ...t, status: nextStatus };
       }
       return t;
@@ -265,6 +486,64 @@ export default function DashboardStats({
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
+  const handlePrevDay = () => {
+    if (activeDay === 'all') {
+      const now = new Date();
+      setActiveDay(now.getDate());
+      return;
+    }
+
+    if (activeDay > 1) {
+      setActiveDay(activeDay - 1);
+    } else {
+      // Transition to previous month
+      const currentMonthIdx = months.indexOf(activeMonth);
+      let prevMonthIdx = currentMonthIdx - 1;
+      let prevYear = activeYear;
+      if (prevMonthIdx < 0) {
+        prevMonthIdx = 11;
+        prevYear -= 1;
+      }
+      
+      const prevMonthName = months[prevMonthIdx];
+      const isLeap = (prevYear % 4 === 0 && prevYear % 100 !== 0) || (prevYear % 400 === 0);
+      const prevMonthDays = ['January', 'March', 'May', 'July', 'August', 'October', 'December'].includes(prevMonthName)
+        ? 31
+        : prevMonthName === 'February'
+        ? (isLeap ? 29 : 28)
+        : 30;
+
+      setActiveYear(prevYear);
+      setActiveMonth(prevMonthName);
+      setActiveDay(prevMonthDays);
+    }
+  };
+
+  const handleNextDay = () => {
+    if (activeDay === 'all') {
+      setActiveDay(1);
+      return;
+    }
+
+    if (activeDay < totalDaysInMonth) {
+      setActiveDay(activeDay + 1);
+    } else {
+      // Transition to next month
+      const currentMonthIdx = months.indexOf(activeMonth);
+      let nextMonthIdx = currentMonthIdx + 1;
+      let nextYear = activeYear;
+      if (nextMonthIdx > 11) {
+        nextMonthIdx = 0;
+        nextYear += 1;
+      }
+
+      const nextMonthName = months[nextMonthIdx];
+      setActiveYear(nextYear);
+      setActiveMonth(nextMonthName);
+      setActiveDay(1);
+    }
+  };
+
   const handleTodayClick = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -286,6 +565,11 @@ export default function DashboardStats({
             <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-600" />
             <span>Task Monitor:</span>
           </div>
+          {isLevel1SpecificMembership && (
+            <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-700 font-black px-2 py-0.5 rounded-lg animate-pulse whitespace-nowrap">
+              Level 1 Trainee Exclusive View (Only your assigned sessions/tasks are visible)
+            </span>
+          )}
         {/* Year Selector Box */}
         <div className="relative inline-block text-left">
           <button 
@@ -370,64 +654,84 @@ export default function DashboardStats({
           )}
         </div>
 
-        {/* Day Selector Box */}
-        <div className="relative inline-block text-left">
-          <button 
+        {/* Day Selector Box with Left and Right Navigation Arrows */}
+        <div className="flex items-center bg-white border border-slate-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)] divide-x divide-slate-100 overflow-hidden">
+          <button
             type="button"
-            onClick={() => setIsDayDropdownOpen(!isDayDropdownOpen)}
-            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer select-none transition-all outline-hidden whitespace-nowrap"
-            title="Filter Dashboard by Day"
+            onClick={handlePrevDay}
+            className="flex items-center justify-center p-1.5 hover:bg-slate-50 text-slate-500 hover:text-slate-850 transition-colors cursor-pointer select-none"
+            title="Previous Day"
           >
-            <span>
-              {typeof activeDay === 'number' 
-                ? `${String(activeDay).padStart(2, '0')}/${MONTH_TO_NUM[activeMonth] || '06'}/${activeYear}` 
-                : 'All Days'}
-            </span>
-            <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform ${isDayDropdownOpen ? 'rotate-180' : ''}`} />
+            <ChevronLeft className="h-4 w-4 text-slate-500" />
           </button>
-          
-          {isDayDropdownOpen && (
-            <>
-              {/* Overlay mask backing to easily close on outline click */}
-              <div 
-                className="fixed inset-0 z-10 cursor-default" 
-                onClick={() => setIsDayDropdownOpen(false)}
-              />
-              <div className="absolute left-0 mt-1.5 w-48 rounded-xl bg-white border border-slate-200/90 shadow-xl z-20 overflow-hidden divide-y divide-slate-50 py-1 max-h-64 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveDay('all');
-                    setIsDayDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3.5 py-2 text-xs font-semibold cursor-pointer transition-colors ${
-                    activeDay === 'all' 
-                      ? 'bg-emerald-50 text-emerald-800 font-bold' 
-                      : 'text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  All Days
-                </button>
-                {monthDaysList.map(d => (
+
+          <div className="relative inline-block text-left">
+            <button 
+              type="button"
+              onClick={() => setIsDayDropdownOpen(!isDayDropdownOpen)}
+              className="flex items-center gap-1.5 hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none transition-all outline-hidden whitespace-nowrap"
+              title="Filter Dashboard by Day"
+            >
+              <span>
+                {typeof activeDay === 'number' 
+                  ? `${String(activeDay).padStart(2, '0')}/${MONTH_TO_NUM[activeMonth] || '06'}/${activeYear}` 
+                  : 'All Days'}
+              </span>
+              <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform ${isDayDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {isDayDropdownOpen && (
+              <>
+                {/* Overlay mask backing to easily close on outline click */}
+                <div 
+                  className="fixed inset-0 z-10 cursor-default" 
+                  onClick={() => setIsDayDropdownOpen(false)}
+                />
+                <div className="absolute left-1/2 -translate-x-1/2 mt-1.5 w-48 rounded-xl bg-white border border-slate-200/90 shadow-xl z-20 overflow-hidden divide-y divide-slate-50 py-1 max-h-64 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
                   <button
-                    key={d.dayNum}
                     type="button"
                     onClick={() => {
-                      setActiveDay(d.dayNum);
+                      setActiveDay('all');
                       setIsDayDropdownOpen(false);
                     }}
                     className={`w-full text-left px-3.5 py-2 text-xs font-semibold cursor-pointer transition-colors ${
-                      activeDay === d.dayNum 
+                      activeDay === 'all' 
                         ? 'bg-emerald-50 text-emerald-800 font-bold' 
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    {d.label}
+                    All Days
                   </button>
-                ))}
-              </div>
-            </>
-          )}
+                  {monthDaysList.map(d => (
+                    <button
+                      key={d.dayNum}
+                      type="button"
+                      onClick={() => {
+                        setActiveDay(d.dayNum);
+                        setIsDayDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2 text-xs font-semibold cursor-pointer transition-colors ${
+                        activeDay === d.dayNum 
+                          ? 'bg-emerald-50 text-emerald-800 font-bold' 
+                          : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleNextDay}
+            className="flex items-center justify-center p-1.5 hover:bg-slate-50 text-slate-500 hover:text-slate-850 transition-colors cursor-pointer select-none"
+            title="Next Day"
+          >
+            <ChevronRight className="h-4 w-4 text-slate-500" />
+          </button>
         </div>
 
         {/* Today Function Box (custom header background #549B8C) */}
@@ -441,13 +745,20 @@ export default function DashboardStats({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-6">
         {/* Card 1: Ongoing block */}
-        <div id="stat-ongoing" className="bg-emerald-50/40 border border-emerald-250/60 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
+        <div 
+          id="stat-ongoing" 
+          onClick={() => {
+            setActiveModal('ongoing');
+            setModalTab('mine');
+          }}
+          className="bg-emerald-50/40 border border-emerald-250/60 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-emerald-50 hover:border-emerald-400 hover:shadow-[0_4px_12px_rgba(16,185,129,0.08)] transition-all duration-150 hover:scale-[1.01]"
+          title="Click to view ongoing tasks detail modal"
+        >
           <div>
-            <span className="text-[11px] font-bold text-emerald-800 tracking-wider uppercase">Today Courses</span>
+            <span className="text-[11px] font-bold text-emerald-800 tracking-wider uppercase">On-going Tasks</span>
             <h3 className="text-3xl font-extrabold text-emerald-950 mt-1">{realTimeTodayCourses.length}</h3>
-            <p className="text-xs text-emerald-700/90 font-medium mt-1">{realTimeActiveClassroomsCount} Active Labs in Use</p>
           </div>
           <div className="bg-emerald-500/10 p-3 rounded-xl text-emerald-600">
             <Activity className="h-5.5 w-5.5" />
@@ -455,11 +766,18 @@ export default function DashboardStats({
         </div>
 
         {/* Card 2: Upcoming block */}
-        <div id="stat-upcoming" className="bg-sky-50/45 border border-sky-250/60 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
+        <div 
+          id="stat-upcoming" 
+          onClick={() => {
+            setActiveModal('upcoming');
+            setModalTab('mine');
+          }}
+          className="bg-sky-50/45 border border-sky-250/60 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-sky-100 hover:border-sky-400 hover:shadow-[0_4px_12px_rgba(14,165,233,0.08)] transition-all duration-150 hover:scale-[1.01]"
+          title="Click to view upcoming tasks detail modal"
+        >
           <div>
-            <span className="text-[11px] font-bold text-sky-800 tracking-wider uppercase">Upcoming Courses</span>
+            <span className="text-[11px] font-bold text-sky-800 tracking-wider uppercase">Upcoming Tasks</span>
             <h3 className="text-3xl font-extrabold text-sky-950 mt-1">{realTimeUpcoming.length}</h3>
-            <p className="text-xs text-sky-700/90 font-medium mt-0.5">Starting next 7 days</p>
           </div>
           <div className="bg-sky-500/10 p-3 rounded-xl text-sky-600">
             <Calendar className="h-5.5 w-5.5" />
@@ -467,63 +785,34 @@ export default function DashboardStats({
         </div>
 
         {/* Card 3: Inter-personal Members Tasks Box */}
-        <div id="stat-your-tasks" className="bg-indigo-50/40 border border-indigo-250 p-4.5 rounded-2xl flex flex-col justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-indigo-300 transition-all min-h-[145px]">
+        <div 
+          id="stat-your-tasks" 
+          onClick={() => setActiveModal('your_tasks')}
+          className="bg-indigo-50/40 border border-indigo-250 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-indigo-50 hover:border-indigo-400 hover:shadow-[0_4px_12px_rgba(79,70,229,0.08)] transition-all duration-150 hover:scale-[1.01]"
+          title="Click to view detailed tasks window"
+        >
           <div>
-            <div className="flex items-center justify-between gap-1 mb-1">
-              <div className="flex items-center gap-1">
-                <span className="text-[11px] font-bold text-indigo-8o0 uppercase tracking-wider text-indigo-900">Your Tasks</span>
-                <span className="text-[9.5px] px-1.5 py-0.2 rounded-full font-bold bg-indigo-100 text-indigo-800">
-                  {realTimePendingCount}
-                </span>
-              </div>
-              {isAuthorizedToAssign && (
-                <button
-                  onClick={() => {
-                    const nonCreatorMembers = members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org');
-                    setTaskAssignee(nonCreatorMembers[0]?.email || '');
-                    setIsModalOpen(true);
-                  }}
-                  className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-2 py-1 rounded-lg flex items-center gap-0.5 transition-all outline-none"
-                  title="Assign duty task directive to safety membership"
-                >
-                  <Plus className="h-3 w-3" /> Give
-                </button>
-              )}
-            </div>
+            <span className="text-[11px] font-bold text-indigo-800 tracking-wider uppercase">Your Tasks</span>
+            <h3 className="text-3xl font-extrabold text-indigo-950 mt-1">{realTimePendingCount}</h3>
+          </div>
+          <div className="bg-indigo-500/10 p-3 rounded-xl text-indigo-600">
+            <CheckSquare className="h-5.5 w-5.5" />
+          </div>
+        </div>
 
-            {/* Micro List of Tasks */}
-            <div className="space-y-1 max-h-[60px] overflow-y-auto pr-0.5 scrollbar-thin">
-              {realTimeMemberTasks.length === 0 ? (
-                <p className="text-[10px] text-slate-500 italic py-1">No tasks assigned.</p>
-              ) : (
-                realTimeMemberTasks.slice(0, 3).map(task => (
-                  <div 
-                    key={task.id} 
-                    className="flex items-start gap-1 py-1 px-1.5 rounded-lg bg-white/50 border border-indigo-100/30 hover:bg-white transition-all text-[10.5px] font-sans"
-                  >
-                    <button 
-                      onClick={() => handleToggleTaskStatus(task.id)}
-                      className="text-indigo-600 hover:text-indigo-850 outline-none mt-0.5 flex-shrink-0 cursor-pointer"
-                      title={task.status === 'Completed' ? "Mark Active/Pending" : "Mark Completed"}
-                    >
-                      {task.status === 'Completed' ? (
-                        <CheckSquare className="h-3.5 w-3.5 text-emerald-600" />
-                      ) : (
-                        <Square className="h-3.5 w-3.5 text-slate-400" />
-                      )}
-                    </button>
-                    <div className="min-w-0 flex-1 leading-tight">
-                      <span className={`block truncate font-medium text-slate-800 ${task.status === 'Completed' ? 'line-through text-slate-400 font-normal' : ''}`}>
-                        {task.title}
-                      </span>
-                      <span className="text-[8px] text-slate-400 font-mono">
-                        Due: {formatDate(task.dueDate)}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+        {/* Card 4: Finished Tasks Box */}
+        <div 
+          id="stat-finished-tasks" 
+          onClick={() => setActiveModal('your_tasks')}
+          className="bg-teal-50/40 border border-teal-250 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-teal-50 hover:border-teal-400 hover:shadow-[0_4px_12px_rgba(20,184,166,0.08)] transition-all duration-150 hover:scale-[1.01]"
+          title="Click to view detailed tasks window"
+        >
+          <div>
+            <span className="text-[11px] font-bold text-teal-800 tracking-wider uppercase">Finished Tasks</span>
+            <h3 className="text-3xl font-extrabold text-teal-950 mt-1">{realTimeCompletedCount}</h3>
+          </div>
+          <div className="bg-teal-500/10 p-3 rounded-xl text-teal-600">
+            <CheckSquare className="h-5.5 w-5.5" />
           </div>
         </div>
 
@@ -533,7 +822,7 @@ export default function DashboardStats({
             <div className="flex items-center justify-between gap-1 mb-2">
               <div className="flex items-center gap-1.5 min-w-0">
                 <Cake className="h-4 w-4 text-rose-500 shrink-0" />
-                <span className="text-[11px] font-bold text-rose-900 uppercase tracking-wider truncate">Birthdays in {realTimeMonthName}</span>
+                <span className="text-[11px] font-bold text-rose-900 uppercase tracking-wider truncate">Upcoming Birthdays ({realTimeYear})</span>
                 <span className="text-[9.5px] px-1.5 py-0.2 rounded-full font-bold bg-rose-100 text-rose-800 shrink-0">
                   {realTimeBirthdayMembers.length}
                 </span>
@@ -541,38 +830,34 @@ export default function DashboardStats({
             </div>
 
             {/* Micro List of Birthdays */}
-            <div className="space-y-1 max-h-[75px] overflow-y-auto pr-0.5 scrollbar-thin">
+            <div className="space-y-1.5 max-h-[75px] overflow-y-auto pr-0.5 scrollbar-thin">
               {realTimeBirthdayMembers.length === 0 ? (
-                <p className="text-[10px] text-slate-500 italic py-2">None.</p>
+                <p className="text-[10px] text-slate-500 italic py-2">No upcoming birthdays.</p>
               ) : (
-                realTimeBirthdayMembers.map(({ member, age, daysRemaining, isToday }) => (
+                realTimeBirthdayMembers.map(({ member, formattedDob, daysRemaining, isToday }) => (
                   <div 
                     key={member.id} 
-                    className={`flex items-center justify-between py-1 px-1.5 rounded-lg border transition-all text-[10.5px] font-sans ${
+                    className={`flex items-center justify-between py-1.5 px-2 rounded-lg border transition-all text-[10px] font-sans ${
                       isToday 
                         ? 'bg-rose-50 border-rose-250 text-rose-950 font-bold' 
                         : 'bg-white/50 border-rose-100/30 hover:bg-white text-slate-800'
                     }`}
                   >
-                    <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-extrabold shrink-0 border uppercase ${
-                        isToday ? 'bg-rose-500 text-white border-rose-600' : 'bg-slate-100 text-slate-700 border-slate-200'
-                      }`}>
-                        {member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </div>
-                      <span className="truncate block font-medium">
+                    <div className="min-w-0 flex-1">
+                      <span className="truncate block font-bold text-slate-800">
                         {member.name}
                       </span>
+                      <span className="text-[8px] text-slate-450 block">Origin DOB: {formattedDob}</span>
                     </div>
-                    <div className="text-right shrink-0 font-mono text-[9px] text-slate-400 pl-1">
+                    <div className="text-right shrink-0 font-mono text-[9px] text-slate-500 pl-1">
                       {isToday ? (
                         <span className="text-rose-600 font-extrabold flex items-center gap-0.5">
                           <Sparkles className="h-2.5 w-2.5" />
-                          Age {age} 🎁
+                          Today! 🎉
                         </span>
                       ) : (
                         <span>
-                          {daysRemaining === 0 ? 'Today!' : `${daysRemaining}d`}
+                          {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'}
                         </span>
                       )}
                     </div>
@@ -696,6 +981,258 @@ export default function DashboardStats({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Pop-up Modals for Task Monitor Sections */}
+      {activeModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div 
+            className="fixed inset-0 cursor-default" 
+            onClick={() => setActiveModal(null)}
+          />
+          <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150 z-10 text-left">
+            
+            {/* Modal Header */}
+            <div className={`p-5 text-white flex items-center justify-between ${
+              activeModal === 'ongoing' 
+                ? 'bg-emerald-600' 
+                : activeModal === 'upcoming' 
+                  ? 'bg-sky-600' 
+                  : 'bg-indigo-600'
+            }`}>
+              <div>
+                <h3 className="text-base font-extrabold flex items-center gap-2">
+                  {activeModal === 'ongoing' && (
+                    <>
+                      <Activity className="h-5 w-5 animate-pulse" />
+                      <span>On-going Scheduled Tasks Details</span>
+                    </>
+                  )}
+                  {activeModal === 'upcoming' && (
+                    <>
+                      <Calendar className="h-5 w-5" />
+                      <span>Upcoming Scheduled Tasks Details</span>
+                    </>
+                  )}
+                  {activeModal === 'your_tasks' && (
+                    <>
+                      <CheckSquare className="h-5 w-5" />
+                      <span>Your Tasks & Assigned Duties Overview</span>
+                    </>
+                  )}
+                </h3>
+                {activeModal === 'your_tasks' && (
+                  <p className="text-white/85 text-[11px] font-semibold mt-1">
+                    Dual view of your related assigned courses and direct administrative tasks
+                  </p>
+                )}
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="text-white/80 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto flex-1 bg-slate-50/50 space-y-6">
+              {activeModal === 'ongoing' && (
+                <div className="space-y-4">
+                  {renderSessionsTable(loggedInOngoingSessions)}
+                </div>
+              )}
+
+              {activeModal === 'upcoming' && (
+                <div className="space-y-4">
+                  {renderSessionsTable(loggedInUpcomingSessions)}
+                </div>
+              )}
+
+              {activeModal === 'your_tasks' && (
+                <div className="space-y-6">
+                  {/* Table 1: Given tasks by the Directors */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                    <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-100">
+                      <div>
+                        <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                          <CheckSquare className="h-4 w-4 text-indigo-500" />
+                          <span>Given tasks by the Directors</span>
+                        </h4>
+                      </div>
+                      <span className="text-[10.5px] px-2.5 py-0.5 rounded-full font-black bg-indigo-50 text-indigo-700 uppercase tracking-wide border border-indigo-100">
+                        {loggedInTasks.length} total
+                      </span>
+                    </div>
+                    
+                    {loggedInTasks.length === 0 ? (
+                      <div className="text-center py-7 text-xs text-slate-400 italic">No tasks have been assigned by the Directors yet.</div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border border-slate-200">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-500 uppercase text-[9.5px] font-bold tracking-wider border-b border-slate-250/50">
+                              <th className="p-3">Task Name</th>
+                              <th className="p-3">Objectives</th>
+                              <th className="p-3">By</th>
+                              <th className="p-3 font-mono">Deadline</th>
+                              <th className="p-3 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-slate-700 font-medium text-left">
+                            {loggedInTasks.map(t => {
+                              const isCourseTask = !!t.sessionId;
+                              const endDate = t.endDate || t.dueDate;
+                              const isFinished = !isCourseTask || (endDate < realTimeTodayStr);
+
+                              return (
+                                <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
+                                  <td className="p-3 text-left">
+                                    <div className="text-slate-900 font-bold">{t.title}</div>
+                                  </td>
+                                  <td className="p-3 text-left">
+                                    <div className="text-slate-500 text-[11px] font-normal max-w-sm whitespace-pre-wrap">{t.description || 'N/A'}</div>
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap text-slate-500">
+                                    {t.assignedBy}
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap text-slate-550 font-mono">
+                                    {formatDate(t.dueDate)}
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!isFinished) {
+                                          return;
+                                        }
+                                        handleToggleTaskStatus(t.id);
+                                      }}
+                                      className={`inline-flex items-center gap-1 text-[10.5px] font-extrabold px-3 py-1 rounded-lg border transition-all cursor-pointer ${
+                                        !isFinished 
+                                          ? 'bg-slate-150 border-slate-250 text-slate-400 cursor-not-allowed' 
+                                          : t.status === 'Completed'
+                                            ? 'bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100'
+                                            : 'bg-emerald-50 border-emerald-110 text-emerald-600 hover:bg-emerald-100'
+                                      }`}
+                                      title={!isFinished ? `Course has not finished yet (ends on ${formatDate(endDate)})` : "Toggle completion status"}
+                                    >
+                                      {t.status === 'Completed' ? 'Mark Active' : 'Mark Done'}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Table 2: Tasks given by authorized level 4 membership */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                    <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-100">
+                      <div>
+                        <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                          <CheckSquare className="h-4 w-4 text-emerald-500" />
+                          <span>Table 2: Directives & Tasks From Authorized Management (Level 4)</span>
+                        </h4>
+                        <p className="text-[10.5px] text-slate-400 font-semibold mt-0.5">Duty orders, directive tasks and checks assigned to your safety centre profile.</p>
+                      </div>
+                      <span className="text-[10.5px] px-2.5 py-0.5 rounded-full font-black bg-emerald-50 text-emerald-700 uppercase tracking-wide border border-emerald-100">
+                        {loggedInTasks.length} assigned
+                      </span>
+                    </div>
+                    
+                    {loggedInTasks.length === 0 ? (
+                      <div className="text-center py-7 text-xs text-slate-400 italic">No direct management task orders have been assigned to your membership yet.</div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border border-slate-200">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-500 uppercase text-[9.5px] font-bold tracking-wider border-b border-slate-250/50">
+                              <th className="p-3">Status</th>
+                              <th className="p-3">Task Title & Details</th>
+                              <th className="p-3">Assigned By</th>
+                              <th className="p-3 font-mono">Due Date</th>
+                              <th className="p-3 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-slate-700 font-medium text-left">
+                            {loggedInTasks.map(t => {
+                              const isCourseTask = !!t.sessionId;
+                              const endDate = t.endDate || t.dueDate;
+                              const isFinished = !isCourseTask || (endDate < realTimeTodayStr);
+
+                              return (
+                                <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
+                                  <td className="p-3 whitespace-nowrap">
+                                    <span className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                      t.status === 'Completed' 
+                                        ? 'bg-emerald-100 text-emerald-800' 
+                                        : 'bg-amber-100 text-amber-800'
+                                    }`}>
+                                      {t.status}
+                                    </span>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="text-slate-905 text-left font-bold">{t.title}</div>
+                                    {t.description && <div className="text-slate-450 text-left text-[10.5px] mt-0.5 font-normal">{t.description}</div>}
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap text-slate-500">
+                                    {t.assignedBy}
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap text-slate-550 font-mono">
+                                    {formatDate(t.dueDate)}
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!isFinished) {
+                                          return;
+                                        }
+                                        handleToggleTaskStatus(t.id);
+                                      }}
+                                      className={`inline-flex items-center gap-1 text-[10.5px] font-extrabold px-3 py-1 rounded-lg border transition-all cursor-pointer ${
+                                        !isFinished 
+                                          ? 'bg-slate-150 border-slate-250 text-slate-400 cursor-not-allowed' 
+                                          : t.status === 'Completed'
+                                            ? 'bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100'
+                                            : 'bg-emerald-50 border-emerald-110 text-emerald-600 hover:bg-emerald-100'
+                                      }`}
+                                      title={!isFinished ? `Course has not finished yet (ends on ${formatDate(endDate)})` : "Toggle completion status"}
+                                    >
+                                      {t.status === 'Completed' ? 'Mark Active' : 'Mark Done'}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-150 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="px-4.5 py-1.8 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Close Window
+              </button>
+            </div>
+
           </div>
         </div>
       )}

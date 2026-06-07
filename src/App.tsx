@@ -31,15 +31,12 @@ import { formatDate } from './utils/date';
 import DashboardStats from './components/DashboardStats';
 import TimelineView from './components/TimelineView';
 import CalendarView from './components/CalendarView';
-import CourseCardList from './components/CourseCardList';
-import AdminPanel from './components/AdminPanel';
 import CourseDetailsDrawer from './components/CourseDetailsDrawer';
 import MembershipInformation from './components/MembershipInformation';
 import CourseList from './components/CourseList';
 import ProfileView from './components/ProfileView';
 import DashboardMonthBirthdays from './components/DashboardMonthBirthdays';
 import LoginPage from './components/LoginPage';
-import WorkspaceHub from './components/WorkspaceHub';
 // @ts-ignore
 import logoImg from './assets/images/regenerated_image_1780583890425.jpg';
 
@@ -89,7 +86,7 @@ export default function App() {
     return [defaultCreator, ...userDefined];
   });
 
-  const [activeTab, setActiveTab] = useState<'timeline' | 'calendar' | 'catalog' | 'admin' | 'memberships' | 'profile' | 'courses' | 'workspace'>('timeline');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'memberships' | 'profile' | 'courses'>('timeline');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedSession, setSelectedSession] = useState<CourseSession | null>(null);
 
@@ -603,6 +600,11 @@ export default function App() {
   const handleAddSession = (newSess: CourseSession) => {
     setSessions(prev => [newSess, ...prev]);
 
+    // Update parent's course domain with the chosen value if provided
+    if (newSess.domain) {
+      setCourses(prev => prev.map(c => c.id === newSess.courseId ? { ...c, domain: newSess.domain } : c));
+    }
+
     // Automatically assign Tasks as system notifications to the assigned Member(s)
     const course = courses.find(c => c.id === newSess.courseId);
     const courseCode = course ? course.code : 'HSE';
@@ -637,31 +639,66 @@ export default function App() {
         startTime: newSess.startTime,
         endTime: newSess.endTime,
         taOfficer: newSess.taOfficer || 'None Assigned',
+        tgOfficer: newSess.tgOfficer,
+        method: newSess.method,
         instructor: newSess.instructor
       });
     }
 
     // 2. Notification/Task for TA
     if (newSess.taOfficer) {
-      const taMember = members.find(m => m.name.trim().toLowerCase() === newSess.taOfficer!.trim().toLowerCase());
-      if (taMember) {
+      const taList = newSess.taOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+      taList.forEach((taName, index) => {
+        const taMember = members.find(m => m.name.trim().toLowerCase() === taName.toLowerCase());
+        if (taMember) {
+          newTasks.push({
+            id: `task-session-ta-${timestamp}-${index}`,
+            assignedBy: assignerName,
+            assignedTo: taMember.email,
+            title: `TA Duty: ${courseCode} - ${courseTitle}`,
+            description: `You have been assigned as Teaching Assistant (TA) for course "${courseTitle}" in classroom "${newSess.classroom}" from ${newSess.startDate} to ${newSess.endDate} (${newSess.startTime} - ${newSess.endTime}). Notes: ${newSess.notes || 'None'}`,
+            dueDate: newSess.startDate,
+            status: 'Pending',
+            createdAt: new Date().toISOString(),
+            sessionId: newSess.id,
+            courseName: courseTitle,
+            assignedRole: 'TA',
+            startDate: newSess.startDate,
+            endDate: newSess.endDate,
+            startTime: newSess.startTime,
+            endTime: newSess.endTime,
+            taOfficer: newSess.taOfficer || 'None Assigned',
+            tgOfficer: newSess.tgOfficer,
+            method: newSess.method,
+            instructor: newSess.instructor
+          });
+        }
+      });
+    }
+
+    // 3. Notification/Task for TG
+    if (newSess.tgOfficer) {
+      const tgMember = members.find(m => m.name.trim().toLowerCase() === newSess.tgOfficer!.trim().toLowerCase());
+      if (tgMember) {
         newTasks.push({
-          id: `task-session-ta-${timestamp}`,
+          id: `task-session-tg-${timestamp}`,
           assignedBy: assignerName,
-          assignedTo: taMember.email,
-          title: `TA Duty: ${courseCode} - ${courseTitle}`,
-          description: `You have been assigned as Teacher Assistant for course "${courseTitle}" in classroom "${newSess.classroom}" from ${newSess.startDate} to ${newSess.endDate} (${newSess.startTime} - ${newSess.endTime}). Notes: ${newSess.notes || 'None'}`,
+          assignedTo: tgMember.email,
+          title: `TG Duty: ${courseCode} - ${courseTitle}`,
+          description: `You have been assigned as Teacher Assistant (TG) for course "${courseTitle}" in classroom "${newSess.classroom}" from ${newSess.startDate} to ${newSess.endDate} (${newSess.startTime} - ${newSess.endTime}). Notes: ${newSess.notes || 'None'}`,
           dueDate: newSess.startDate,
           status: 'Pending',
           createdAt: new Date().toISOString(),
           sessionId: newSess.id,
           courseName: courseTitle,
-          assignedRole: 'TA',
+          assignedRole: 'TG',
           startDate: newSess.startDate,
           endDate: newSess.endDate,
           startTime: newSess.startTime,
           endTime: newSess.endTime,
           taOfficer: newSess.taOfficer || 'None Assigned',
+          tgOfficer: newSess.tgOfficer,
+          method: newSess.method,
           instructor: newSess.instructor
         });
       }
@@ -675,9 +712,18 @@ export default function App() {
   // Remove virtual session
   const handleRemoveSession = (sessionId: string) => {
     setSessions(prev => prev.filter(s => s.id !== sessionId));
+    setTasks(prev => prev.filter(t => t.sessionId !== sessionId));
     if (selectedSession?.id === sessionId) {
       setSelectedCourse(null);
       setSelectedSession(null);
+    }
+  };
+
+  // Update virtual session
+  const handleUpdateSession = (updatedSess: CourseSession) => {
+    setSessions(prev => prev.map(s => s.id === updatedSess.id ? updatedSess : s));
+    if (selectedSession?.id === updatedSess.id) {
+      setSelectedSession(updatedSess);
     }
   };
 
@@ -770,7 +816,8 @@ export default function App() {
     s.startDate <= realTodayStr && 
     s.endDate >= realTodayStr &&
     (s.instructor.toLowerCase().includes(officerName.toLowerCase()) || 
-     (s.taOfficer && s.taOfficer.toLowerCase().includes(officerName.toLowerCase())))
+     (s.taOfficer && s.taOfficer.toLowerCase().includes(officerName.toLowerCase())) ||
+     (s.tgOfficer && s.tgOfficer.toLowerCase().includes(officerName.toLowerCase())))
   );
 
   const inDeadlineTasks = tasks.filter(t => 
@@ -829,11 +876,7 @@ export default function App() {
                 <p className="text-xs text-emerald-100 font-semibold flex items-center gap-1.5 mt-0.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse"></span>
                   <span className="font-bold text-emerald-50 tracking-wide">
-                    {activeTab === 'timeline' ? 'Dashboard' : 
-                     activeTab === 'calendar' ? 'Calendar Planner' : 
-                     activeTab === 'catalog' ? 'Courses List' : 
-                     activeTab === 'admin' ? 'Schedule Manager' : 
-                     activeTab === 'workspace' ? 'Drive & Forms Hub' : 'General Information'}
+                    {activeTab === 'timeline' ? 'Dashboard' : 'General Information'}
                   </span>
                 </p>
               </div>
@@ -874,7 +917,7 @@ export default function App() {
                       <div className="px-3.5 py-2.5 bg-slate-50/55 flex flex-col gap-1.5 border-b border-slate-100">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
-                            {showCompletedTasksMode ? 'Completed Courses' : 'Your Courses'}
+                            {showCompletedTasksMode ? 'Completed Tasks' : 'Your Tasks'}
                           </span>
                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                             showCompletedTasksMode ? 'bg-emerald-100 text-emerald-950 font-bold' : 'bg-purple-100 text-purple-950'
@@ -885,13 +928,29 @@ export default function App() {
                             }
                           </span>
                         </div>
-                        <div className="flex justify-end pt-0.5">
+                        <div className="flex justify-between items-center pt-0.5">
                           <button
                             type="button"
                             onClick={() => setShowCompletedTasksMode(!showCompletedTasksMode)}
                             className="text-[10px] font-bold text-[#559b8c] hover:text-[#3f766a] hover:underline cursor-pointer transition-colors"
                           >
-                            {showCompletedTasksMode ? 'View active courses' : 'View completed courses'}
+                            {showCompletedTasksMode ? 'View active tasks' : 'View completed tasks'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (showCompletedTasksMode) {
+                                const completedTaskIds = tasks.filter(t => t.assignedTo.toLowerCase() === userEmail.toLowerCase() && t.status === 'Completed').map(t => t.id);
+                                setTasks(prev => prev.filter(t => !completedTaskIds.includes(t.id)));
+                              } else {
+                                const activeTaskIds = inDeadlineTasks.map(t => t.id);
+                                setTasks(prev => prev.filter(t => !activeTaskIds.includes(t.id)));
+                              }
+                            }}
+                            className="text-[10px] font-black text-rose-600 hover:text-rose-800 hover:underline cursor-pointer transition-colors"
+                          >
+                            Delete all
                           </button>
                         </div>
                       </div>
@@ -899,7 +958,7 @@ export default function App() {
                         {showCompletedTasksMode ? (
                           tasks.filter(t => t.assignedTo.toLowerCase() === userEmail.toLowerCase() && t.status === 'Completed').length === 0 ? (
                             <div id="no-notifications" className="text-center py-5 text-xs text-slate-400 font-semibold italic">
-                              No completed courses
+                              No completed tasks
                             </div>
                           ) : (
                             tasks.filter(t => t.assignedTo.toLowerCase() === userEmail.toLowerCase() && t.status === 'Completed').map((task) => {
@@ -909,10 +968,10 @@ export default function App() {
                               const isOngoing = details.startDate <= realTodayStr && details.endDate >= realTodayStr;
 
                               const badgeText = isUpcoming 
-                                ? "Upcoming Course" 
+                                ? "Upcoming Task" 
                                 : isOngoing 
-                                  ? "On-going Course" 
-                                  : "Completed Course";
+                                  ? "On-going Task" 
+                                  : "Completed Task";
 
                               const badgeColor = isUpcoming
                                 ? "text-amber-800 bg-amber-100"
@@ -936,7 +995,7 @@ export default function App() {
                                   </div>
                                   
                                   <div>
-                                    <span className="font-extrabold text-emerald-950">Course Name:</span>{" "}
+                                    <span className="font-extrabold text-emerald-950">Task Name:</span>{" "}
                                     <span className="text-slate-900 font-bold">"{details.courseName}"</span>
                                   </div>
                                   <div>
@@ -973,7 +1032,7 @@ export default function App() {
                                         }}
                                         className="rounded border-slate-300 h-3.5 w-3.5 cursor-pointer disabled:cursor-not-allowed text-emerald-600 focus:ring-emerald-400 accent-emerald-600"
                                       />
-                                      <span>Complete {!isFinished && <span className="text-[9px] font-medium text-amber-600">(Course not finished)</span>}</span>
+                                      <span>Complete {!isFinished && <span className="text-[9px] font-medium text-amber-600">(Task not finished)</span>}</span>
                                     </label>
                                   </div>
                                 </div>
@@ -983,7 +1042,7 @@ export default function App() {
                         ) : (
                           inDeadlineTasks.length === 0 ? (
                             <div id="no-notifications" className="text-center py-5 text-xs text-slate-400 font-semibold italic">
-                              No active courses
+                              No active tasks
                             </div>
                           ) : (
                             <div className="space-y-3">
@@ -994,10 +1053,10 @@ export default function App() {
                                 const isOngoing = details.startDate <= realTodayStr && details.endDate >= realTodayStr;
 
                                 const badgeText = isUpcoming 
-                                  ? "Upcoming Course" 
+                                  ? "Upcoming Task" 
                                   : isOngoing 
-                                    ? "On-going Course" 
-                                    : "Active Course";
+                                    ? "On-going Task" 
+                                    : "Active Task";
 
                                 const badgeColor = isUpcoming
                                   ? "text-amber-800 bg-amber-100"
@@ -1027,7 +1086,7 @@ export default function App() {
                                     </div>
                                     
                                     <div>
-                                      <span className="font-extrabold text-slate-750">Course Name:</span>{" "}
+                                      <span className="font-extrabold text-slate-755">Task Name:</span>{" "}
                                       <span className="text-slate-900 font-bold">"{details.courseName}"</span>
                                     </div>
                                     <div>
@@ -1127,11 +1186,7 @@ export default function App() {
               className="w-full text-xs font-bold text-slate-800 bg-slate-50 hover:bg-slate-100/70 border border-slate-200/90 rounded-lg px-3 py-1.5 pr-8 cursor-pointer outline-none transition-all appearance-none shadow-3xs"
             >
               <option value="timeline">📊 Dashboard</option>
-              <option value="calendar">📅 Calendar Planner</option>
-              <option value="catalog">📚 Courses List</option>
-              <option value="admin">⚙️ Schedule Manager</option>
               <option value="memberships">👥 General Information</option>
-              <option value="workspace">☁️ Drive & Sheets Hub</option>
             </select>
             <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
           </div>
@@ -1164,41 +1219,24 @@ export default function App() {
                 onSelectCourse={handleSelectCourse} 
                 onAddSession={handleAddSession}
                 onRemoveSession={handleRemoveSession}
+                onUpdateSession={handleUpdateSession}
                 currentUserEmail={userEmail}
                 members={members}
               />
+              <CalendarView 
+                courses={courses} 
+                sessions={sessions} 
+                onSelectCourse={handleSelectCourse} 
+                activeMonth={activeMonth}
+                activeDay={activeDay}
+                activeYear={activeYear}
+                setActiveMonth={(m) => {
+                  setActiveMonth(m);
+                  setActiveDay('all');
+                }}
+                setActiveYear={setActiveYear}
+              />
             </div>
-          )}
-
-          {activeTab === 'calendar' && (
-            <CalendarView 
-              courses={courses} 
-              sessions={sessions} 
-              onSelectCourse={handleSelectCourse} 
-              activeMonth={activeMonth}
-              activeDay={activeDay}
-              activeYear={activeYear}
-            />
-          )}
-
-          {activeTab === 'catalog' && (
-            <CourseCardList 
-              courses={courses} 
-              sessions={sessions} 
-              onSelectCourse={handleSelectCourse} 
-              onAddCourse={handleAddCourse}
-              currentUserEmail={userEmail}
-              members={members}
-            />
-          )}
-
-          {activeTab === 'admin' && (
-            <AdminPanel 
-              courses={courses} 
-              sessions={sessions} 
-              onAddSession={handleAddSession} 
-              onRemoveSession={handleRemoveSession} 
-            />
           )}
 
           {activeTab === 'memberships' && (
@@ -1215,17 +1253,6 @@ export default function App() {
               onAddCourse={handleAddCourse}
               onUpdateCourse={handleUpdateCourse}
               onRemoveCourse={handleRemoveCourse}
-            />
-          )}
-
-          {activeTab === 'workspace' && (
-            <WorkspaceHub 
-              courses={courses}
-              sessions={sessions}
-              members={members}
-              tasks={tasks}
-              onSetCourses={setCourses}
-              onSetSessions={setSessions}
             />
           )}
 

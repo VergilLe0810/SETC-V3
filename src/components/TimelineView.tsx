@@ -4,8 +4,9 @@
  */
 
 import { useState, FormEvent } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, MapPin, Clock, User, Calendar, SlidersHorizontal, Plus, X, AlertTriangle, Trash2, Settings, ShieldAlert } from 'lucide-react';
-import { Course, CourseSession, Member } from '../types';
+import { motion, AnimatePresence } from 'motion/react';
+import { ChevronDown, ChevronLeft, ChevronRight, MapPin, Clock, User, Calendar, SlidersHorizontal, Plus, X, AlertTriangle, Trash2, Settings, ShieldAlert, AlertCircle } from 'lucide-react';
+import { Course, CourseSession, Member, CourseDomain } from '../types';
 import { getSessionStatus, CLASSROOMS, INSTRUCTORS } from '../data';
 import { getDaysForMonth } from '../utils/dateUtils';
 import { formatDate } from '../utils/date';
@@ -22,6 +23,7 @@ interface TimelineViewProps {
   setActiveYear?: (year: number) => void;
   onAddSession?: (newSession: CourseSession) => void;
   onRemoveSession?: (sessionId: string) => void;
+  onUpdateSession?: (updatedSession: CourseSession) => void;
   currentUserEmail: string;
   members: Member[];
 }
@@ -69,6 +71,7 @@ export default function TimelineView({
   onSelectCourse,
   onAddSession,
   onRemoveSession,
+  onUpdateSession,
   currentUserEmail,
   members
 }: TimelineViewProps) {
@@ -88,6 +91,75 @@ export default function TimelineView({
   const [monthVal, setMonthVal] = useState<string>(realMonthName);
   const [yearVal, setYearVal] = useState<number>(realYear);
 
+  // Pop-up modal details view state
+  const [popupCourseSession, setPopupCourseSession] = useState<{ course: Course; session: CourseSession } | null>(null);
+
+  // Editing state for Course Session popup
+  const [isEditingSession, setIsEditingSession] = useState<boolean>(false);
+  const [sessionToDelete, setSessionToDelete] = useState<CourseSession | null>(null);
+  const [editStartDate, setEditStartDate] = useState<string>('');
+  const [editEndDate, setEditEndDate] = useState<string>('');
+  const [editStartTime, setEditStartTime] = useState<string>('');
+  const [editEndTime, setEditEndTime] = useState<string>('');
+  const [editInstructor, setEditInstructor] = useState<string>('');
+  const [editClassroom, setEditClassroom] = useState<string>('');
+  const [editMaxCapacity, setEditMaxCapacity] = useState<number>(20);
+  const [editTaOfficer, setEditTaOfficer] = useState<string>('');
+  const [editTgOfficer, setEditTgOfficer] = useState<string>('');
+  const [editMethod, setEditMethod] = useState<'Online' | 'Offline'>('Offline');
+
+  const handleStartEditingSession = () => {
+    if (!popupCourseSession) return;
+    const { session } = popupCourseSession;
+    setIsEditingSession(true);
+    setEditStartDate(session.startDate);
+    setEditEndDate(session.endDate);
+    setEditStartTime(session.startTime);
+    setEditEndTime(session.endTime);
+    setEditInstructor(session.instructor);
+    setEditClassroom(session.classroom);
+    setEditMaxCapacity(session.maxCapacity);
+    setEditTaOfficer(session.taOfficer || '');
+    setEditTgOfficer(session.tgOfficer || '');
+    setEditMethod(session.method || 'Offline');
+  };
+
+  const handleSaveSessionUpdates = () => {
+    if (!popupCourseSession) return;
+    const updatedSession: CourseSession = {
+      ...popupCourseSession.session,
+      startDate: editStartDate,
+      endDate: editEndDate,
+      startTime: editStartTime,
+      endTime: editEndTime,
+      instructor: editInstructor,
+      classroom: editClassroom,
+      maxCapacity: editMaxCapacity,
+      taOfficer: editTaOfficer,
+      tgOfficer: editTgOfficer,
+      method: editMethod,
+    };
+
+    if (onUpdateSession) {
+      onUpdateSession(updatedSession);
+    }
+
+    setPopupCourseSession({
+      course: popupCourseSession.course,
+      session: updatedSession
+    });
+    setIsEditingSession(false);
+  };
+
+  const handleCancelEditingSession = () => {
+    setIsEditingSession(false);
+  };
+
+  const handleDeleteSession = () => {
+    if (!popupCourseSession) return;
+    setSessionToDelete(popupCourseSession.session);
+  };
+
   // Courses Assignment (Schedule Manager Component) state and form values
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState<boolean>(false);
   const [selCourseId, setSelCourseId] = useState<string>(courses[0]?.id || '');
@@ -96,6 +168,8 @@ export default function TimelineView({
   const [assignStartDate, setAssignStartDate] = useState<string>('2026-06-10');
   const [assignEndDate, setAssignEndDate] = useState<string>('2026-06-12');
   const [assignTa, setAssignTa] = useState<string>('');
+  const [assignTg, setAssignTg] = useState<string>('');
+  const [assignMethod, setAssignMethod] = useState<'Online' | 'Offline'>('Offline');
   const [assignInstructor, setAssignInstructor] = useState<string>(() => {
     const foundInst = members?.find(m => m.position?.toLowerCase().includes('instructor'));
     if (foundInst) {
@@ -113,6 +187,10 @@ export default function TimelineView({
   const [assignCapacity, setAssignCapacity] = useState<number>(25);
   const [assignNote, setAssignNote] = useState<string>('');
   const [assignFeedback, setAssignFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [assignDomain, setAssignDomain] = useState<CourseDomain>(() => {
+    const firstCourse = courses[0];
+    return (firstCourse?.domain as CourseDomain) || 'HSE';
+  });
 
   const handleCourseSelectChange = (courseIdVal: string) => {
     setSelCourseId(courseIdVal);
@@ -120,6 +198,9 @@ export default function TimelineView({
     if (selected) {
       setAssignCourseCode(selected.code);
       setAssignCourseName(selected.title);
+      if (selected.domain) {
+        setAssignDomain(selected.domain);
+      }
     }
   };
 
@@ -144,6 +225,8 @@ export default function TimelineView({
     const newStart = new Date(assignStartDate);
     const newEnd = new Date(assignEndDate);
 
+    const isOnlineNew = assignMethod === 'Online';
+
     sessions.forEach(existing => {
       const exStart = new Date(existing.startDate);
       const exEnd = new Date(existing.endDate);
@@ -156,17 +239,71 @@ export default function TimelineView({
       const matchedCourse = courses.find(c => c.id === existing.courseId);
       const code = matchedCourse ? matchedCourse.code : 'Session';
 
-      if (existing.classroom === assignClassroom) {
-        testConflicts.push(`Classroom "${assignClassroom}" is already booked by "${code}" during ${formatDate(existing.startDate)} to ${formatDate(existing.endDate)}`);
+      const isOnlineExisting = existing.method === 'Online';
+
+      // 1. Classroom check: Only if both courses are Offline
+      if (!isOnlineNew && !isOnlineExisting) {
+        if (existing.classroom === assignClassroom) {
+          testConflicts.push(`Classroom "${assignClassroom}" is already booked by "${code}" during ${formatDate(existing.startDate)} to ${formatDate(existing.endDate)}`);
+        }
       }
+
+      // 2. Instructor check:
       if (existing.instructor === assignInstructor) {
-        testConflicts.push(`Instructor "${assignInstructor.split(' (')[0]}" is scheduled for "${code}" on those same dates.`);
+        const isSameCourseName = selCourseId === existing.courseId || assignCourseCode === code || assignCourseName === (matchedCourse ? matchedCourse.title : '');
+        const isOneOrBothOnline = isOnlineNew || isOnlineExisting;
+        if (isSameCourseName && isOneOrBothOnline) {
+          // Rule 2: If both Online & Offline share same name and instructor, ignore instructor conflict
+        } else {
+          // Rule 3: booked for a different course at same time is a conflict
+          testConflicts.push(`Instructor "${assignInstructor.split(' (')[0]}" is scheduled for "${code}" on those same dates.`);
+        }
       }
-      if (assignTa && existing.taOfficer) {
-        const normNewTa = assignTa.trim().toLowerCase();
-        const normExTa = existing.taOfficer.trim().toLowerCase();
-        if (normNewTa && normExTa && (normNewTa.includes(normExTa) || normExTa.includes(normNewTa))) {
-          testConflicts.push(`TA/TG "${existing.taOfficer}" is conflicts with "${code}" on those same dates.`);
+
+      // 3. TA check: TA can be at any Online Courses at the same time without any conflicts.
+      // So TA overlap conflicts only occur if BOTH courses are Offline.
+      if (!isOnlineNew && !isOnlineExisting && assignTa && existing.taOfficer) {
+        const newTas = assignTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        const existingTas = existing.taOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        
+        let conflictingTaName = '';
+        const hasOverlap = newTas.some(nt => {
+          return existingTas.some(et => {
+            const ntL = nt.toLowerCase();
+            const etL = et.toLowerCase();
+            if (ntL && etL && (ntL.includes(etL) || etL.includes(ntL))) {
+              conflictingTaName = et;
+              return true;
+            }
+            return false;
+          });
+        });
+
+        if (hasOverlap) {
+          testConflicts.push(`Teaching Assistant (TA) "${conflictingTaName}" cannot be overlapped in multiple offline courses at the same time (already assigned to "${code}" on these dates).`);
+        }
+      }
+
+      // 4. TG check: similar to TA, only conflicts if BOTH are Offline.
+      if (!isOnlineNew && !isOnlineExisting && assignTg && existing.tgOfficer) {
+        const newTgs = assignTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        const existingTgs = existing.tgOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        
+        let conflictingTgName = '';
+        const hasOverlap = newTgs.some(nt => {
+          return existingTgs.some(et => {
+            const ntL = nt.toLowerCase();
+            const etL = et.toLowerCase();
+            if (ntL && etL && (ntL.includes(etL) || etL.includes(ntL))) {
+              conflictingTgName = et;
+              return true;
+            }
+            return false;
+          });
+        });
+
+        if (hasOverlap) {
+          testConflicts.push(`Teacher Assistant (TG) "${conflictingTgName}" cannot be overlapped in multiple offline courses at the same time (already assigned to "${code}" on these dates).`);
         }
       }
     });
@@ -188,7 +325,10 @@ export default function TimelineView({
       maxCapacity: assignCapacity,
       enrolledIds: [],
       taOfficer: assignTa || undefined,
-      notes: assignNote || undefined
+      tgOfficer: assignTg || undefined,
+      method: assignMethod,
+      notes: assignNote || undefined,
+      domain: assignDomain,
     };
 
     if (onAddSession) {
@@ -199,7 +339,9 @@ export default function TimelineView({
       });
       // Clear specific temporary fields
       setAssignTa('');
+      setAssignTg('');
       setAssignNote('');
+      setAssignMethod('Offline');
       // Auto close the course assignment window after completion
       setIsAssignmentModalOpen(false);
     } else {
@@ -305,36 +447,91 @@ export default function TimelineView({
       const courseCode = matchedCourse ? matchedCourse.code : 'Session';
       const courseTitle = matchedCourse ? matchedCourse.title : 'External Cohort';
 
-      // 1. classroom check
-      if (ex.classroom === assignClassroom) {
-        activeConflicts.push({
-          type: 'Classroom',
-          message: `Classroom "${assignClassroom}" is simultaneously booked.`,
-          conflictingSession: ex,
-          courseCode,
-          courseTitle
-        });
+      const isOnlineNew = assignMethod === 'Online';
+      const isOnlineExisting = ex.method === 'Online';
+
+      // 1. Classroom check: Only if both courses are Offline
+      if (!isOnlineNew && !isOnlineExisting) {
+        if (ex.classroom === assignClassroom) {
+          activeConflicts.push({
+            type: 'Classroom',
+            message: `Classroom "${assignClassroom}" is simultaneously booked.`,
+            conflictingSession: ex,
+            courseCode,
+            courseTitle
+          });
+        }
       }
 
-      // 2. instructor check
+      // 2. Instructor check:
       if (ex.instructor === assignInstructor) {
-        activeConflicts.push({
-          type: 'Instructor',
-          message: `Trainer "${assignInstructor.split(' (')[0]}" has overlapping duty.`,
-          conflictingSession: ex,
-          courseCode,
-          courseTitle
-        });
+        const isSameCourseName = selCourseId === ex.courseId || assignCourseCode === courseCode || assignCourseName === courseTitle;
+        const isOneOrBothOnline = isOnlineNew || isOnlineExisting;
+        if (isSameCourseName && isOneOrBothOnline) {
+          // Rule 2: same name, same instructor and one is Online -> ignore
+        } else {
+          // Rule 3: booked for a different course at same time is a conflict
+          activeConflicts.push({
+            type: 'Instructor',
+            message: `Trainer "${assignInstructor.split(' (')[0]}" has overlapping duty.`,
+            conflictingSession: ex,
+            courseCode,
+            courseTitle
+          });
+        }
       }
 
-      // 3. TA/TG check (only check if assignTa is input)
-      if (assignTa && ex.taOfficer) {
-        const normNewTa = assignTa.trim().toLowerCase();
-        const normExTa = ex.taOfficer.trim().toLowerCase();
-        if (normNewTa && normExTa && (normNewTa.includes(normExTa) || normExTa.includes(normNewTa))) {
+      // 3. TA check: TA can be at any Online Courses at same time without conflicts. So only check if BOTH are Offline.
+      if (!isOnlineNew && !isOnlineExisting && assignTa && ex.taOfficer) {
+        const newTas = assignTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        const existingTas = ex.taOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        
+        let conflictingTaName = '';
+        const hasOverlap = newTas.some(nt => {
+          return existingTas.some(et => {
+            const ntL = nt.toLowerCase();
+            const etL = et.toLowerCase();
+            if (ntL && etL && (ntL.includes(etL) || etL.includes(ntL))) {
+              conflictingTaName = et;
+              return true;
+            }
+            return false;
+          });
+        });
+
+        if (hasOverlap) {
           activeConflicts.push({
             type: 'TA/TG',
-            message: `TA/TG "${ex.taOfficer}" is already assigned here.`,
+            message: `TA Duty: "${conflictingTaName}" is already assigned to "${courseCode}" during these dates & times.`,
+            conflictingSession: ex,
+            courseCode,
+            courseTitle
+          });
+        }
+      }
+
+      // 4. TG check: similar to TA, only conflicts if BOTH are Offline.
+      if (!isOnlineNew && !isOnlineExisting && assignTg && ex.tgOfficer) {
+        const newTgs = assignTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        const existingTgs = ex.tgOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        
+        let conflictingTgName = '';
+        const hasOverlap = newTgs.some(nt => {
+          return existingTgs.some(et => {
+            const ntL = nt.toLowerCase();
+            const etL = et.toLowerCase();
+            if (ntL && etL && (ntL.includes(etL) || etL.includes(ntL))) {
+              conflictingTgName = et;
+              return true;
+            }
+            return false;
+          });
+        });
+
+        if (hasOverlap) {
+          activeConflicts.push({
+            type: 'TA/TG',
+            message: `TG Duty: "${conflictingTgName}" is already assigned to "${courseCode}" during these dates & times.`,
             conflictingSession: ex,
             courseCode,
             courseTitle
@@ -385,33 +582,27 @@ export default function TimelineView({
               {/* Left Column: Form (7cols) */}
               <div className="lg:col-span-7 p-6 overflow-y-auto max-h-[calc(92vh-140px)] space-y-4">
                 <form id="course-assignment-form" onSubmit={handlePublishAssignment} className="space-y-4">
-                  {/* Course Name and Course ID Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Course Name
-                      </label>
-                      <select
-                        id="assign-select-course-title"
-                        value={selCourseId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSelCourseId(val);
-                          const selected = courses.find(c => c.id === val);
-                          if (selected) {
-                            setAssignCourseCode(selected.code);
-                            setAssignCourseName(selected.title);
-                          }
-                        }}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                      >
-                        {courses.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.title}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  {/* Course Selection block */}
+                  <div className="space-y-1 bg-slate-50 p-4 rounded-xl border border-slate-150">
+                    <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      Course Name (Full Content)
+                    </label>
+                    <select
+                      id="assign-select-course-title"
+                      value={selCourseId}
+                      onChange={(e) => handleCourseSelectChange(e.target.value)}
+                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                    >
+                      {courses.map(c => (
+                        <option key={c.id} value={c.id} className="whitespace-normal py-1 pr-4">
+                          {c.code} — {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Automatic Linked Properties Check Column */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Course ID
@@ -424,6 +615,33 @@ export default function TimelineView({
                         className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none cursor-not-allowed font-semibold text-slate-600 focus:ring-none"
                         title="Linked automatically to selected course"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        Domain
+                      </label>
+                      <input
+                        id="assign-input-domain"
+                        type="text"
+                        readOnly
+                        value={assignDomain}
+                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none cursor-not-allowed font-semibold text-slate-605 focus:ring-none"
+                        title="Determined automatically by selected course"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        Method
+                      </label>
+                      <select
+                        id="assign-select-method"
+                        value={assignMethod}
+                        onChange={(e) => setAssignMethod(e.target.value as 'Online' | 'Offline')}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                      >
+                        <option value="Offline">Offline</option>
+                        <option value="Online">Online</option>
+                      </select>
                     </div>
                   </div>
 
@@ -457,26 +675,93 @@ export default function TimelineView({
                     </div>
                   </div>
 
-                  {/* Teacher Assistance (TA/TG) & Instructor Fields */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Teacher Assistance (TA / TG)
-                      </label>
-                      <select
-                        id="assign-select-ta-field"
-                        value={assignTa}
-                        onChange={(e) => setAssignTa(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-[#559b8c] font-semibold text-slate-800"
-                      >
-                        <option value="">None Assigned</option>
-                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
-                          <option key={m.id} value={m.name}>
-                            {m.name} ({m.position || 'Member'})
-                          </option>
-                        ))}
-                      </select>
+                  {/* TA (Teaching Assisstance) & TG (Teacher Assistance) Fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1 px-1">
+                      <div className="flex justify-between items-center mb-0.5">
+                        <label className="block text-[10.5px] font-black text-slate-600 uppercase tracking-wider">
+                          Teaching Assisstance (TA)
+                        </label>
+                        <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">Multiple Choices</span>
+                      </div>
+                      <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg p-1.5 space-y-1 bg-white focus-within:ring-1 focus-within:ring-[#559b8c] focus-within:border-transparent">
+                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => {
+                          const list = assignTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+                          const isChecked = list.some(name => name.toLowerCase() === m.name.toLowerCase());
+                          return (
+                            <label key={m.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  if (isChecked) {
+                                    setAssignTa(list.filter(x => x.toLowerCase() !== m.name.toLowerCase()).join(', '));
+                                  } else {
+                                    setAssignTa([...list, m.name].join(', '));
+                                  }
+                                }}
+                                className="rounded text-[#559b8c] focus:ring-[#559b8c] h-3.5 w-3.5"
+                              />
+                              <div className="text-xs text-slate-750 font-bold leading-none flex justify-between w-full">
+                                <span>{m.name}</span>
+                                <span className="text-[9.5px] text-slate-400 capitalize">{m.position || 'Member'}</span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').length === 0 && (
+                          <div className="text-[11px] text-slate-400 text-center py-6 font-semibold">No members available.</div>
+                        )}
+                      </div>
+                      <div className="text-[9px] text-slate-450 font-bold">
+                        Selected: <span className="text-emerald-700 font-extrabold">{assignTa || 'None (Left Blank)'}</span>
+                      </div>
                     </div>
+
+                    <div className="space-y-1 px-1">
+                      <div className="flex justify-between items-center mb-0.5">
+                        <label className="block text-[10.5px] font-black text-slate-600 uppercase tracking-wider">
+                          Teacher Assistance (TG)
+                        </label>
+                        <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">Multiple Choices</span>
+                      </div>
+                      <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg p-1.5 space-y-1 bg-white focus-within:ring-1 focus-within:ring-[#559b8c] focus-within:border-transparent">
+                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => {
+                          const list = assignTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+                          const isChecked = list.some(name => name.toLowerCase() === m.name.toLowerCase());
+                          return (
+                            <label key={m.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  if (isChecked) {
+                                    setAssignTg(list.filter(x => x.toLowerCase() !== m.name.toLowerCase()).join(', '));
+                                  } else {
+                                    setAssignTg([...list, m.name].join(', '));
+                                  }
+                                }}
+                                className="rounded text-[#559b8c] focus:ring-[#559b8c] h-3.5 w-3.5"
+                              />
+                              <div className="text-xs text-slate-750 font-bold leading-none flex justify-between w-full">
+                                <span>{m.name}</span>
+                                <span className="text-[9.5px] text-slate-400 capitalize">{m.position || 'Member'}</span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').length === 0 && (
+                          <div className="text-[11px] text-slate-400 text-center py-6 font-semibold">No members available.</div>
+                        )}
+                      </div>
+                      <div className="text-[9px] text-slate-450 font-bold">
+                        Selected: <span className="text-amber-700 font-extrabold">{assignTg || 'None (Left Blank)'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Instructor & Classroom Fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1">
                     <div>
                       <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Instructor / Trainer
@@ -494,10 +779,7 @@ export default function TimelineView({
                         ))}
                       </select>
                     </div>
-                  </div>
 
-                  {/* Classroom and Duration specs */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Classroom
@@ -515,6 +797,10 @@ export default function TimelineView({
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  {/* Duration Hours & Number of Learners */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Duration Hours (Time)
@@ -526,20 +812,37 @@ export default function TimelineView({
                           required
                           value={assignStartTime}
                           onChange={(e) => setAssignStartTime(e.target.value)}
-                          className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none text-center font-mono"
+                          className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
                           placeholder="09:00"
                         />
-                        <span className="text-slate-400 font-bold">-</span>
+                        <span className="text-slate-400 font-bold px-2">-</span>
                         <input
                           id="assign-input-end-time"
                           type="text"
                           required
                           value={assignEndTime}
                           onChange={(e) => setAssignEndTime(e.target.value)}
-                          className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none text-center font-mono"
+                          className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
                           placeholder="16:00"
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        Number of Learners
+                      </label>
+                      <input
+                        id="assign-input-capacity"
+                        type="number"
+                        required
+                        value={assignCapacity}
+                        onChange={(e) => setAssignCapacity(parseInt(e.target.value) || 20)}
+                        min={1}
+                        max={100}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                        placeholder="e.g. 20"
+                      />
                     </div>
                   </div>
 
@@ -636,7 +939,12 @@ export default function TimelineView({
                             </div>
                             {c.conflictingSession.taOfficer && (
                               <div>
-                                <span className="font-extrabold text-slate-500">TA/TG:</span> {c.conflictingSession.taOfficer}
+                                <span className="font-extrabold text-slate-500">TA:</span> {c.conflictingSession.taOfficer}
+                              </div>
+                            )}
+                            {c.conflictingSession.tgOfficer && (
+                              <div>
+                                <span className="font-extrabold text-slate-500">TG:</span> {c.conflictingSession.tgOfficer}
                               </div>
                             )}
                           </div>
@@ -697,11 +1005,14 @@ export default function TimelineView({
               onClick={() => {
                 setIsAssignmentModalOpen(true);
                 // Prefill course structures dynamically
-                if (courses.length > 0 && !selCourseId) {
-                  const first = courses[0];
+                if (courses.length > 0) {
+                  const first = courses.find(c => c.id === selCourseId) || courses[0];
                   setSelCourseId(first.id);
                   setAssignCourseCode(first.code);
                   setAssignCourseName(first.title);
+                  if (first.domain) {
+                    setAssignDomain(first.domain as CourseDomain);
+                  }
                 }
               }}
               className="inline-flex items-center gap-1.5 bg-[#559b8c] hover:bg-[#3f766a] text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-3xs hover:shadow-2xs cursor-pointer transition-all active:scale-[0.98] select-none"
@@ -883,9 +1194,18 @@ export default function TimelineView({
                 <div key={session.id} className="grid grid-cols-[150px_1fr] md:grid-cols-[185px_1fr] items-center hover:bg-slate-50/10 transition-colors">
                   {/* Left Metadata Side */}
                   <div className="p-3 border-r border-slate-100 min-w-0">
-                    <span className="inline-block text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono mb-1 select-all uppercase">
-                      {course.code}
-                    </span>
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      <span className="inline-block text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono select-all uppercase">
+                        {course.code}
+                      </span>
+                      <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded font-mono uppercase ${
+                        session.method === 'Online' 
+                          ? 'bg-sky-100 text-sky-800' 
+                          : 'bg-emerald-100 text-emerald-850'
+                      }`}>
+                        {session.method || 'Offline'}
+                      </span>
+                    </div>
                     <h4 className="text-xs font-black text-slate-900 truncate" title={course.title}>
                       {course.title}
                     </h4>
@@ -913,7 +1233,7 @@ export default function TimelineView({
                         return (
                           <div
                             key={day}
-                            onClick={() => onSelectCourse(course, session)}
+                            onClick={() => setPopupCourseSession({ course, session })}
                             className={`absolute inset-y-1.5 rounded-lg border flex flex-col justify-center px-2 shadow-xs cursor-pointer select-none overflow-hidden transition-all hover:scale-[1.002] hover:brightness-95 hover:shadow-xs z-20 ${style.bg} ${style.border}`}
                             style={{
                               left: `${(activeIndices[0] / displayedDays.length) * 100}%`,
@@ -967,6 +1287,419 @@ export default function TimelineView({
           </div>
         </div>
       </div>
+
+      {/* Pop-up Course Session Detail Modal */}
+      {popupCourseSession && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-250 cursor-default"
+          onClick={() => {
+            setPopupCourseSession(null);
+            setIsEditingSession(false);
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden transform transition-all animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-emerald-600 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                <h3 className="font-extrabold text-sm uppercase tracking-wide">
+                  {isEditingSession ? "Edit Schedule Parameters" : "Course Schedule Details"}
+                </h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setPopupCourseSession(null);
+                  setIsEditingSession(false);
+                }}
+                className="p-1 hover:bg-emerald-700 ease-in-out rounded-lg text-emerald-100 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {isEditingSession ? (
+                <div className="space-y-4 text-left">
+                  {/* Course Info Display Only */}
+                  <div className="space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Course Name</span>
+                    <span className="text-xs font-black text-slate-900 block leading-tight">
+                      {popupCourseSession.course.title}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-505 bg-white border border-slate-200/60 px-1.5 py-0.5 rounded inline-block font-mono mt-1">
+                      ID: {popupCourseSession.course.code}
+                    </span>
+                  </div>
+
+                  {/* Date Range */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Start Date</label>
+                      <input 
+                        type="date"
+                        value={editStartDate}
+                        onChange={(e) => setEditStartDate(e.target.value)}
+                        className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2 outline-none font-bold font-mono focus:ring-1 focus:ring-[#559b8c]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">End Date</label>
+                      <input 
+                        type="date"
+                        value={editEndDate}
+                        onChange={(e) => setEditEndDate(e.target.value)}
+                        className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2 outline-none font-bold font-mono focus:ring-1 focus:ring-[#559b8c]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Timing Selection */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Start Time</label>
+                      <input 
+                        type="text"
+                        value={editStartTime}
+                        onChange={(e) => setEditStartTime(e.target.value)}
+                        placeholder="09:00"
+                        className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2.5 outline-none font-bold font-mono text-center focus:ring-1 focus:ring-[#559b8c]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">End Time</label>
+                      <input 
+                        type="text"
+                        value={editEndTime}
+                        onChange={(e) => setEditEndTime(e.target.value)}
+                        placeholder="16:00"
+                        className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2.5 outline-none font-bold font-mono text-center focus:ring-1 focus:ring-[#559b8c]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Instructor & Classroom */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Instructor</label>
+                      <select 
+                        value={editInstructor}
+                        onChange={(e) => setEditInstructor(e.target.value)}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                      >
+                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                          <option key={m.id} value={`${m.name} (${m.position || 'Instructor'})`}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Classroom</label>
+                      <select 
+                        value={editClassroom}
+                        onChange={(e) => setEditClassroom(e.target.value)}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                      >
+                        {CLASSROOMS.map(room => (
+                          <option key={room.id} value={room.name}>
+                            {room.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Mode / Method Selection */}
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Method / Location</label>
+                    <select 
+                      value={editMethod}
+                      onChange={(e) => setEditMethod(e.target.value as 'Online' | 'Offline')}
+                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                    >
+                      <option value="Offline">Offline</option>
+                      <option value="Online">Online</option>
+                    </select>
+                  </div>
+
+                  {/* TG and TA officers assigned */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Teacher Assistance (TG)</label>
+                      <input 
+                        type="text"
+                        value={editTgOfficer}
+                        onChange={(e) => setEditTgOfficer(e.target.value)}
+                        placeholder="Not Assigned"
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Teaching Assisstance (TA)</label>
+                      <input 
+                        type="text"
+                        value={editTaOfficer}
+                        onChange={(e) => setEditTaOfficer(e.target.value)}
+                        placeholder="Not Assigned"
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Capacity / Number of Learners */}
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Number of Learners (Maximum Space)</label>
+                    <input 
+                      type="number"
+                      value={editMaxCapacity}
+                      onChange={(e) => setEditMaxCapacity(parseInt(e.target.value) || 20)}
+                      min={1}
+                      max={100}
+                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="text-left space-y-4 animate-fade-in">
+                  {/* Course Name */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Course Name</span>
+                    <span id="popup-course-name" className="text-sm font-black text-slate-800 block leading-tight">
+                      {popupCourseSession.course.title}
+                    </span>
+                  </div>
+
+                  {/* Course ID (Removed Reference GUID block) */}
+                  <div className="pt-1">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Course ID</span>
+                      <span id="popup-course-id" className="text-xs font-bold text-slate-705 bg-slate-100 px-2 py-0.5 rounded-md inline-block font-mono">
+                        {popupCourseSession.course.code}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Time and Date */}
+                  <div className="border-t border-b border-slate-50 py-3 space-y-2">
+                    <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-750">
+                      <Calendar className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Time and Date</span>
+                        <span id="popup-course-date">
+                          {formatDate(popupCourseSession.session.startDate)} to {formatDate(popupCourseSession.session.endDate)}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-750">
+                      <Clock className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Classroom Timing</span>
+                        <span id="popup-course-time">
+                          {popupCourseSession.session.startTime} - {popupCourseSession.session.endTime}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Instructor and Method */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Instructor</span>
+                      <span id="popup-course-instructor" className="text-xs font-black text-slate-707 block truncate" title={popupCourseSession.session.instructor}>
+                        {popupCourseSession.session.instructor.split(' (')[0]}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Method</span>
+                      <span id="popup-course-method" className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md inline-block font-mono">
+                        {popupCourseSession.session.method || 'Offline'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Classroom Details */}
+                  <div className="space-y-0.5 pt-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Classroom Venue</span>
+                    <span className="text-xs font-bold text-slate-800">
+                      {popupCourseSession.session.classroom}
+                    </span>
+                  </div>
+
+                  {/* TG and TA */}
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Teacher Assistance (TG)</span>
+                      <span id="popup-course-tg" className="text-xs font-semibold text-slate-750 block truncate" title={popupCourseSession.session.tgOfficer || 'No TG assigned'}>
+                        {popupCourseSession.session.tgOfficer || 'Not Assigned'}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Teaching Assisstance (TA)</span>
+                      <span id="popup-course-ta" className="text-xs font-semibold text-slate-755 block truncate" title={popupCourseSession.session.taOfficer || 'No TA assigned'}>
+                        {popupCourseSession.session.taOfficer || 'Not Assigned'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Number of Learners (replaces Estimate quantity of learners) */}
+                  <div className="border-t border-slate-50 pt-3">
+                    <div className="bg-slate-50 rounded-xl p-3 flex justify-between items-center">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-left">Number of Learners</span>
+                      </div>
+                      <div className="bg-emerald-100 text-emerald-800 font-extrabold text-xs px-2.5 py-1 rounded-lg whitespace-nowrap">
+                        {popupCourseSession.session.maxCapacity}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer (Conditional Access for Level 3 Only) */}
+            <div className="bg-slate-50 px-5 py-3.5 flex items-center justify-between gap-3 border-t border-slate-100">
+              {currentUserLevel === 'level 3' ? (
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDeleteSession}
+                      className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1 border border-rose-100"
+                      title="Delete the assigned course schedule"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
+                    {!isEditingSession && (
+                      <button
+                        type="button"
+                        onClick={handleStartEditingSession}
+                        className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1 border border-emerald-100"
+                        title="Update schedule information"
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                        Update
+                      </button>
+                    )}
+                  </div>
+                  {isEditingSession ? (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCancelEditingSession}
+                        className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveSessionUpdates}
+                        className="px-4 py-2 bg-[#559b8c] hover:bg-[#3f766a] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-3xs"
+                      >
+                        Save updates
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setPopupCourseSession(null)}
+                      className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-750 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    >
+                      Close Details
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex justify-end w-full">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPopupCourseSession(null);
+                      setIsEditingSession(false);
+                    }}
+                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-755 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  >
+                    Close Details
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pop-up Course Session Delete Confirmation Modal */}
+      <AnimatePresence>
+        {sessionToDelete && (
+          <div id="modal-delete-session-window" className="fixed inset-0 z-[60] overflow-y-auto flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSessionToDelete(null)}
+              className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs"
+            />
+
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden w-full max-w-sm relative z-50 text-left"
+            >
+              <div className="p-5 space-y-4">
+                <div className="flex gap-3 items-start">
+                  <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-605 shrink-0">
+                    <AlertCircle className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-1.5 text-left">
+                    <h3 className="text-xs font-extrabold text-slate-950 uppercase tracking-wider font-mono">Confirm Delete</h3>
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
+                      Are you sure you want to permanently delete this course schedule from <span className="font-extrabold text-slate-800">{formatDate(sessionToDelete.startDate)}</span> to <span className="font-extrabold text-slate-800">{formatDate(sessionToDelete.endDate)}</span>?
+                    </p>
+                    <p className="text-[10px] text-rose-600 bg-rose-50/55 border border-rose-100 p-2 rounded-lg font-semibold leading-tight">
+                      This action is irreversible and will purge schedule and assignment records.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSessionToDelete(null)}
+                    className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-850 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all cursor-pointer font-sans"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onRemoveSession) {
+                        onRemoveSession(sessionToDelete.id);
+                      }
+                      setSessionToDelete(null);
+                      setPopupCourseSession(null);
+                      setIsEditingSession(false);
+                    }}
+                    className="px-5 py-2 text-xs font-black uppercase tracking-wider text-white bg-rose-650 hover:bg-rose-700 bg-rose-600 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 font-sans border-none shadow-md shadow-rose-205 ring-2 ring-rose-500 ring-offset-2 animate-pulse hover:animate-none scale-102 hover:scale-105"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Confirm Delete</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

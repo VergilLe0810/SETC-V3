@@ -4,8 +4,9 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Calendar, Users, MapPin, Clock } from 'lucide-react';
+import { Calendar, Users, MapPin, Clock, User, ArrowUpRight, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Course, CourseSession } from '../types';
+import { getSessionStatus } from '../data';
 
 interface CalendarViewProps {
   courses: Course[];
@@ -14,6 +15,8 @@ interface CalendarViewProps {
   activeMonth?: string;
   activeDay?: number | 'all';
   activeYear?: number;
+  setActiveMonth?: (month: string) => void;
+  setActiveYear?: (year: number) => void;
 }
 
 const MONTHS_CONFIG: Record<string, { days: number, emptyDaysBefore: number, startDay: number }> = {
@@ -46,13 +49,61 @@ const MONTH_TO_NUM: Record<string, string> = {
   'December': '12'
 };
 
-export default function CalendarView({ courses, sessions, onSelectCourse, activeMonth = 'June', activeDay = 'all', activeYear = 2026 }: CalendarViewProps) {
+const CATEGORY_STYLES: Record<string, { bg: string, border: string, text: string, textAccent: string }> = {
+  'Safety': { 
+    bg: 'bg-amber-50/90 hover:bg-amber-100/90', 
+    border: 'border-l-[3px] border-amber-500 border-t border-r border-b border-amber-150', 
+    text: 'text-amber-900', 
+    textAccent: 'text-amber-700' 
+  },
+  'Environment': { 
+    bg: 'bg-emerald-50/90 hover:bg-emerald-100/90', 
+    border: 'border-l-[3px] border-emerald-500 border-t border-r border-b border-slate-150', 
+    text: 'text-emerald-950', 
+    textAccent: 'text-emerald-800' 
+  },
+  'Emergency': { 
+    bg: 'bg-rose-50/90 hover:bg-rose-100/90', 
+    border: 'border-l-[3px] border-rose-500 border-t border-r border-b border-rose-150', 
+    text: 'text-rose-950', 
+    textAccent: 'text-rose-850' 
+  },
+  'Health': { 
+    bg: 'bg-teal-50/90 hover:bg-teal-100/90', 
+    border: 'border-l-[3px] border-teal-500 border-t border-r border-b border-teal-150', 
+    text: 'text-teal-950', 
+    textAccent: 'text-teal-800' 
+  },
+  'Compliance': { 
+    bg: 'bg-indigo-50/90 hover:bg-indigo-100/90', 
+    border: 'border-l-[3px] border-indigo-500 border-t border-r border-b border-indigo-150', 
+    text: 'text-indigo-955', 
+    textAccent: 'text-indigo-850' 
+  }
+};
+
+export default function CalendarView({ 
+  courses, 
+  sessions, 
+  onSelectCourse, 
+  activeMonth = 'June', 
+  activeDay = 'all', 
+  activeYear = 2026,
+  setActiveMonth,
+  setActiveYear
+}: CalendarViewProps) {
   const config = MONTHS_CONFIG[activeMonth] || MONTHS_CONFIG['June'];
   const emptyDaysBefore = config.emptyDaysBefore;
   const isLeapYear = (activeYear % 4 === 0 && activeYear % 100 !== 0) || (activeYear % 400 === 0);
   const totalDays = activeMonth === 'February' && isLeapYear ? 29 : config.days;
 
   const [selectedDay, setSelectedDay] = useState<number | null>(activeMonth === 'June' ? 4 : 1);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalDay, setModalDay] = useState<number | null>(null);
+
+  // Dynamic current real-time today calculation
+  const realToday = new Date();
+  const todayDateStr = `${realToday.getFullYear()}-${String(realToday.getMonth() + 1).padStart(2, '0')}-${String(realToday.getDate()).padStart(2, '0')}`;
 
   // Synchronize selected day when activeDay changes
   useEffect(() => {
@@ -83,24 +134,52 @@ export default function CalendarView({ courses, sessions, onSelectCourse, active
     return daysOfWeek[index];
   };
 
-  const selectedDaySessions = selectedDay ? getSessionsForDay(selectedDay) : [];
+  const selectedDaySessions = modalDay ? getSessionsForDay(modalDay) : [];
 
   return (
-    <div id="calendar-view-container" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div id="calendar-view-container" className="w-full space-y-6">
       {/* Calendar Grid card */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm lg:col-span-2">
-        <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 border-b border-slate-100 pb-4">
           <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <Calendar className="h-5 w-5 text-slate-600" />
-            Classroom Monthly Calendar Planner
+            Calendar
           </h2>
-          <span className="text-sm font-semibold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full font-mono uppercase">
-            {activeMonth} {activeYear}
-          </span>
+
+          {/* Month & Year Dropdown selection */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <select 
+                value={activeMonth}
+                onChange={(e) => setActiveMonth?.(e.target.value)}
+                className="text-xs font-bold text-slate-800 bg-slate-50/75 hover:bg-slate-100/70 border border-slate-200 hover:border-slate-350 rounded-xl px-3 py-1.5 pr-8 cursor-pointer outline-none transition-all appearance-none shadow-3xs"
+                title="Select Month"
+              >
+                {Object.keys(MONTHS_CONFIG).map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
+            </div>
+
+            <div className="relative">
+              <select 
+                value={activeYear}
+                onChange={(e) => setActiveYear?.(Number(e.target.value))}
+                className="text-xs font-bold text-slate-800 bg-slate-50/75 hover:bg-slate-100/70 border border-slate-200 hover:border-slate-350 rounded-xl px-3 py-1.5 pr-8 cursor-pointer outline-none transition-all appearance-none shadow-3xs"
+                title="Select Year"
+              >
+                {[2025, 2026, 2027, 2028].map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
+            </div>
+          </div>
         </div>
 
         {/* Days of Week Header */}
-        <div className="grid grid-cols-7 gap-1 text-center font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2">
+        <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs text-slate-400 uppercase tracking-wider mb-2">
           <div>Sun</div>
           <div>Mon</div>
           <div>Tue</div>
@@ -111,94 +190,88 @@ export default function CalendarView({ courses, sessions, onSelectCourse, active
         </div>
 
         {/* Calendar Grid Cells */}
-        <div className="grid grid-cols-7 gap-1">
+        <div className="grid grid-cols-7 gap-1.5">
           {calendarCells.map((day, index) => {
             if (day === null) {
-              return <div key={`empty-${index}`} className="bg-slate-50/50 rounded-lg min-h-[90px] border border-dashed border-slate-100" />;
-            }
-
-            const isDayInSelectedDayRange = activeDay === 'all' || day === activeDay;
-
-            if (!isDayInSelectedDayRange) {
-              // Dim and disable cells not in the active day
-              return (
-                <div
-                  key={`day-${day}`}
-                  className="min-h-[95px] p-2 rounded-lg border border-slate-150 bg-slate-50/20 opacity-20 select-none pointer-events-none flex flex-col justify-between"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded text-slate-400 bg-slate-50">
-                      {day}
-                    </span>
-                  </div>
-                  <div className="mt-1" />
-                </div>
-              );
+              return <div key={`empty-${index}`} className="bg-slate-50/30 rounded-xl min-h-[135px] border border-dashed border-slate-100" />;
             }
 
             const daySessions = getSessionsForDay(day);
-            const isToday = activeMonth === 'June' && day === 4;
+            const isToday = realToday.getDate() === day && 
+                            String(realToday.getMonth() + 1).padStart(2, '0') === (MONTH_TO_NUM[activeMonth] || '06') && 
+                            realToday.getFullYear() === activeYear;
             const isSelected = selectedDay === day;
+            const isFilterSelected = activeDay !== 'all' && activeDay === day;
 
             return (
               <div
                 key={`day-${day}`}
-                onClick={() => setSelectedDay(day)}
-                className={`min-h-[95px] p-2 rounded-lg border transition-all cursor-pointer flex flex-col justify-between ${
-                  isSelected 
-                    ? 'bg-indigo-50/40 border-indigo-400 ring-1 ring-indigo-400' 
+                onClick={() => {
+                  setSelectedDay(day);
+                  setModalDay(day);
+                  setIsModalOpen(true);
+                }}
+                className={`min-h-[135px] p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between group/cell ${
+                  isFilterSelected
+                    ? 'bg-emerald-50/30 border-emerald-400 ring-2 ring-emerald-100 shadow-sm'
+                    : isSelected 
+                    ? 'bg-indigo-50/30 border-indigo-400 ring-2 ring-indigo-100 shadow-xs' 
                     : isToday 
-                    ? 'bg-orange-50/30 border-orange-300' 
-                    : 'bg-white border-slate-200 hover:border-slate-300'
+                    ? 'bg-orange-50/10 border-orange-300 ring-2 ring-orange-50' 
+                    : 'bg-white border-slate-200 hover:border-slate-350 hover:shadow-xs'
                 }`}
               >
                 {/* Date marking */}
                 <div className="flex items-center justify-between">
-                  <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
+                  <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded ${
                     isToday 
                       ? 'bg-orange-500 text-white font-black' 
+                      : isFilterSelected
+                      ? 'bg-emerald-600 text-white'
                       : isSelected
                       ? 'bg-indigo-600 text-white'
-                      : 'text-slate-700 bg-slate-100'
+                      : 'text-slate-700 bg-slate-100 group-hover/cell:bg-slate-200 transition-colors'
                   }`}>
                     {day}
                   </span>
                   {daySessions.length > 0 && (
-                    <span className="text-[9px] font-bold text-slate-400 font-mono">
-                      {daySessions.length} active
+                    <span className="text-[9px] font-black text-slate-400 font-mono">
+                      {daySessions.length} Act.
                     </span>
                   )}
                 </div>
 
-                {/* Badges labels */}
-                <div className="mt-1 space-y-0.5 max-h-[55px] overflow-hidden">
-                  {daySessions.slice(0, 2).map(s => {
+                {/* Timetable-like mini cards */}
+                <div className="mt-2 space-y-1.5 flex-1 min-h-0 overflow-y-auto max-h-[85px] scrollbar-thin">
+                  {daySessions.map(s => {
                     const c = courses.find(item => item.id === s.courseId);
                     if (!c) return null;
 
-                    // Styles mapping
-                    const colorMap: Record<string, string> = {
-                      'Safety': 'bg-amber-100 text-amber-800 border-amber-200',
-                      'Environment': 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                      'Emergency': 'bg-rose-100 text-rose-800 border-rose-200',
-                      'Health': 'bg-teal-100 text-teal-850 border-teal-200',
-                      'Compliance': 'bg-indigo-100 text-indigo-850 border-indigo-200',
+                    const style = CATEGORY_STYLES[c.category] || { 
+                      bg: 'bg-slate-50 hover:bg-slate-150', 
+                      border: 'border-l-[3px] border-slate-500 border-t border-r border-b border-slate-150', 
+                      text: 'text-slate-900', 
+                      textAccent: 'text-slate-700' 
                     };
 
                     return (
                       <div
                         key={s.id}
-                        className={`text-[9px] font-semibold px-1 rounded truncate border ${colorMap[c.category] || 'bg-slate-100 text-slate-800'}`}
-                        title={c.title}
+                        className={`text-[9px] p-1.5 rounded-md ${style.bg} ${style.border} transition-all flex flex-col justify-between shadow-[0_1px_1px_rgba(0,0,0,0.03)]`}
+                        title={`${c.title} | ${s.startTime}-${s.endTime}`}
                       >
-                        {c.code}
+                        <div className="flex items-center justify-between font-mono gap-0.5 leading-none">
+                          <span className={`font-black ${style.textAccent} truncate text-[8.5px]`}>{c.code}</span>
+                          <span className="text-[7.5px] text-slate-500 scale-95 origin-right shrink-0 font-medium">{s.startTime}</span>
+                        </div>
+                        <div className={`font-semibold ${style.text} truncate leading-tight mt-0.5 text-[8.5px]`}>
+                          {c.title}
+                        </div>
                       </div>
                     );
                   })}
-                  {daySessions.length > 2 && (
-                    <div className="text-[8px] text-center text-slate-400 font-bold">
-                      +{daySessions.length - 2} more
-                    </div>
+                  {daySessions.length === 0 && (
+                    <div className="h-full flex items-center justify-center py-4" />
                   )}
                 </div>
               </div>
@@ -207,83 +280,182 @@ export default function CalendarView({ courses, sessions, onSelectCourse, active
         </div>
       </div>
 
-      {/* Selected Day Agenda details card */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col justify-between">
-        <div>
-          <div className="border-b border-slate-200 pb-3 mb-4">
-            <h3 className="text-md font-bold text-slate-900 tracking-tight">
-              Day Schedule Explorer
-            </h3>
-            <p className="text-xs text-slate-500">
-              Selected: <span className="font-semibold text-indigo-700">{activeMonth} {selectedDay}, {activeYear}</span>
-            </p>
+      {/* Pop-up Window Modal showing courses happening for clicked day */}
+      {isModalOpen && modalDay !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-200"
+            onClick={() => setIsModalOpen(false)}
+          />
+
+          {/* Modal Container */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 z-10 animate-in fade-in zoom-in-95 duration-200 relative max-h-[90vh] overflow-y-auto flex flex-col">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-50 text-[#559b8c] rounded-xl">
+                  <Calendar className="h-5 w-5 text-indigo-700" />
+                </div>
+                <div>
+                  <h3 className="text-md font-bold text-slate-900 tracking-tight leading-none">
+                    Courses Scheduled on Day {modalDay}
+                  </h3>
+                  <p className="text-[11px] font-semibold text-slate-500 mt-1 uppercase font-mono">
+                    {activeMonth} {modalDay}, {activeYear} agenda
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-650 p-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Content List */}
+            <div className="py-4 overflow-y-auto flex-1 space-y-4">
+              {selectedDaySessions.length === 0 ? (
+                <div className="text-center py-10 bg-slate-50/50 border border-slate-200 border-dashed rounded-xl p-6">
+                  <Calendar className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-xs text-slate-600 font-bold">No courses scheduled for this date.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">There are no registration windows or courses running on this specific scheduled day block.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {selectedDaySessions.map(session => {
+                    const c = courses.find(item => item.id === session.courseId);
+                    if (!c) return null;
+
+                    const status = getSessionStatus(session.startDate, session.endDate, todayDateStr);
+                    const fillPercentage = Math.round((session.enrolledIds.length / session.maxCapacity) * 100);
+
+                    // Category mapping
+                    const catStyles: Record<string, string> = {
+                      'Safety': 'bg-amber-100 text-amber-800 border-amber-200',
+                      'Environment': 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                      'Emergency': 'bg-rose-100 text-rose-800 border-rose-200',
+                      'Health': 'bg-teal-100 text-teal-850 border-teal-200',
+                      'Compliance': 'bg-indigo-100 text-indigo-850 border-indigo-200',
+                    };
+
+                    return (
+                      <div 
+                        key={session.id}
+                        className="bg-white border border-slate-150 rounded-xl p-5 hover:border-[#559b8c] hover:shadow-2xs transition-all flex flex-col gap-3.5"
+                      >
+                        {/* Status, Course code */}
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-mono font-black text-slate-505 bg-slate-50 border border-slate-150 px-2.5 py-0.5 rounded uppercase tracking-wider font-semibold">
+                              {c.code}
+                            </span>
+                            <span className={`text-[10px] font-mono font-black px-2.5 py-0.5 rounded uppercase tracking-wider border ${
+                              session.method === 'Online' 
+                                ? 'bg-sky-100 text-sky-800 border-sky-200' 
+                                : 'bg-emerald-100 text-emerald-850 border-emerald-200'
+                            }`}>
+                              {session.method || 'Offline'}
+                            </span>
+                          </div>
+                          
+                          {/* Status Badge */}
+                          <span className={`inline-block text-[9px] font-black px-2 py-0.5 rounded-full truncate ${
+                            status === 'ON-GOING' ? 'bg-emerald-100 text-emerald-800 animate-pulse font-extrabold' :
+                            status === 'UP-COMING' ? 'bg-sky-100 text-sky-800' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {status}
+                          </span>
+                        </div>
+
+                        {/* Title of course */}
+                        <div className="text-left">
+                          <h4 className="text-sm font-black text-slate-905 leading-tight">
+                            {c.title}
+                          </h4>
+                        </div>
+
+                        {/* Allowed details grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5 pt-1 text-[11px] text-slate-600 font-semibold text-left">
+                          <div className="flex items-start gap-2">
+                            <MapPin className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place</span>
+                              <span className="text-slate-800 font-bold truncate block">{session.classroom}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <Clock className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Time and Date</span>
+                              <span className="text-slate-800 font-bold block">{session.startTime} - {session.endTime}</span>
+                              <span className="text-[10px] text-slate-400 block italic mt-0.5 font-medium">📅 {session.startDate} to {session.endDate}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <User className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Instructor</span>
+                              <span className="text-slate-800 font-bold truncate block">{session.instructor.split(' (')[0]}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <SlidersHorizontal className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Method</span>
+                              <span className="text-slate-850 font-bold block">
+                                {session.method || 'Offline'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <Users className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Teaching Assisstance (TA)</span>
+                              <span className="text-slate-850 font-bold block whitespace-pre-wrap leading-tight">
+                                {session.taOfficer || 'Not Assigned'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <Users className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Teacher Assistance (TG)</span>
+                              <span className="text-slate-850 font-bold block whitespace-pre-wrap leading-tight">
+                                {session.tgOfficer || 'Not Assigned'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
+              <button 
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="px-6 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-[#559b8c] hover:bg-[#3f766a] rounded-xl transition-all shadow-md active:scale-95 cursor-pointer font-sans"
+              >
+                Close
+              </button>
+            </div>
           </div>
-
-          {selectedDaySessions.length === 0 ? (
-            <div className="text-center py-10 bg-white border border-slate-200 border-dashed rounded-xl p-4">
-              <Calendar className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs text-slate-500 font-medium">No sessions scheduled for this day.</p>
-              <p className="text-[10px] text-slate-400 mt-1">Select other dates in the planner grid above.</p>
-            </div>
-          ) : (
-            <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1">
-              {selectedDaySessions.map(session => {
-                const c = courses.find(item => item.id === session.courseId);
-                if (!c) return null;
-
-                const catStyles: Record<string, string> = {
-                  'Safety': 'bg-amber-100 text-amber-800 border-amber-200',
-                  'Environment': 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                  'Emergency': 'bg-rose-100 text-rose-800 border-rose-200',
-                  'Health': 'bg-teal-100 text-teal-800 border-teal-200',
-                  'Compliance': 'bg-indigo-100 text-indigo-800 border-indigo-200',
-                };
-
-                return (
-                  <div
-                    key={session.id}
-                    onClick={() => onSelectCourse(c, session)}
-                    className="p-3 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 hover:shadow-xs transition-all cursor-pointer"
-                  >
-                    <div className="flex justify-between items-start gap-2 mb-1.5">
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${catStyles[c.category]}`}>
-                        {c.category}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-400 font-bold">
-                        {c.code}
-                      </span>
-                    </div>
-
-                    <h4 className="text-xs font-bold text-slate-900 line-clamp-1">
-                      {c.title}
-                    </h4>
-
-                    <div className="mt-2 space-y-1 text-[10px] text-slate-600">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="h-3 w-3 text-slate-400" />
-                        <span>{session.startTime} - {session.endTime}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="h-3 w-3 text-slate-400" />
-                        <span className="truncate">{session.classroom}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Users className="h-3 w-3 text-slate-400" />
-                        <span>{session.enrolledIds.length} / {session.maxCapacity} Enrolled ({session.maxCapacity - session.enrolledIds.length} left)</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
-
-        <div className="mt-4 pt-3 border-t border-slate-200 text-[11px] text-slate-400 flex items-center justify-between">
-          <span>Occupancy average is active</span>
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

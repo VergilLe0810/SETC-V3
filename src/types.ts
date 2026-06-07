@@ -41,8 +41,11 @@ export interface CourseSession {
   classroom: string;
   maxCapacity: number;
   enrolledIds: string[]; // List of user IDs enrolled
-  taOfficer?: string;
+  taOfficer?: string; // Teaching Assisstance (TA)
+  tgOfficer?: string; // Teacher Assistance (TG)
+  method?: 'Online' | 'Offline';
   notes?: string;
+  domain?: CourseDomain;
 }
 
 export interface UserProgress {
@@ -97,6 +100,8 @@ export interface Task {
   startTime?: string;
   endTime?: string;
   taOfficer?: string;
+  tgOfficer?: string;
+  method?: 'Online' | 'Offline';
   instructor?: string;
 }
 
