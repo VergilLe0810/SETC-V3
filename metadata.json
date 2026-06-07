@@ -1,0 +1,8 @@
+{
+  "name": "Petrovietnam - Safety \u0026 Environment Training Centre V3",
+  "description": "Overall Management",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
