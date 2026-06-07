@@ -79,17 +79,6 @@ export default function App() {
       password: 'abc123'
     };
 
-    const defaultAdmin: Member = {
-      id: 'mem-1',
-      name: 'Le Minh Vuong',
-      dob: '1990-08-10',
-      position: 'HSE Instructor',
-      email: 'vuongle0810@gmail.com',
-      createdAt: '2026-06-04T07:58:20Z',
-      authorizedLevel: 'level 4',
-      password: 'abc123'
-    };
-
     // Keep userdefined but filter out our defaults to ensure they are never duplicated or overwritten
     const userDefined = loaded.filter(m => 
       m.email.toLowerCase() !== 'vuongle0810@gmail.com' && 
@@ -97,7 +86,7 @@ export default function App() {
       m.email.toLowerCase() !== 'setcadmin@safetycentre.org'
     );
 
-    return [defaultCreator, defaultAdmin, ...userDefined];
+    return [defaultCreator, ...userDefined];
   });
 
   const [activeTab, setActiveTab] = useState<'timeline' | 'calendar' | 'catalog' | 'admin' | 'memberships' | 'profile' | 'courses' | 'workspace'>('timeline');
@@ -113,7 +102,7 @@ export default function App() {
     return sessionStorage.getItem('se_is_logged_in') === 'true';
   });
   const [userEmail, setUserEmail] = useState<string>(() => {
-    return localStorage.getItem('se_user_email') || 'vuongle0810@gmail.com';
+    return localStorage.getItem('se_user_email') || 'setcadmin';
   });
 
   const handleLogin = (email: string) => {
@@ -622,7 +611,7 @@ export default function App() {
     const newTasks: Task[] = [];
     const timestamp = Date.now();
     const activeMember = members.find(m => m.email.toLowerCase() === userEmail.toLowerCase());
-    const assignerName = activeMember ? activeMember.name : (userEmail === 'vuongle0810@gmail.com' ? 'Le Minh Vuong' : userEmail.split('@')[0]);
+    const assignerName = activeMember ? activeMember.name : (userEmail === 'setcadmin' ? 'SETC Creator Admin' : userEmail.split('@')[0]);
 
     // 1. Notification/Task for Instructor
     const instructorName = newSess.instructor.includes(' (')
@@ -707,10 +696,9 @@ export default function App() {
     setMembers(prev => {
       return prev.filter(m => {
         const isTarget = m.id === id;
-        const isUndeletable = m.id === 'mem-creator' || m.id === 'mem-1' || 
+        const isUndeletable = m.id === 'mem-creator' || 
                              m.email.toLowerCase() === 'setcadmin' || 
-                             m.email.toLowerCase() === 'setcadmin@safetycentre.org' ||
-                             m.email.toLowerCase() === 'vuongle0810@gmail.com';
+                             m.email.toLowerCase() === 'setcadmin@safetycentre.org';
         if (isTarget && isUndeletable) {
           return true; // Keep the core administrator profile even if target
         }
@@ -738,7 +726,7 @@ export default function App() {
   };
 
   const currentMember = members.find(m => m.email.toLowerCase() === userEmail.toLowerCase());
-  const officerName = currentMember ? currentMember.name : (userEmail === 'vuongle0810@gmail.com' ? 'Le Minh Vuong' : userEmail.split('@')[0]);
+  const officerName = currentMember ? currentMember.name : (userEmail === 'setcadmin' ? 'SETC Creator Admin' : userEmail.split('@')[0]);
 
   // Find real-time today elements for notifications
   const realToday = new Date();
@@ -1221,7 +1209,7 @@ export default function App() {
               onUpdateMember={handleUpdateMember}
               onSetMembers={setMembers}
               currentUserEmail={userEmail}
-              authorizedEmail="vuongle0810@gmail.com"
+              authorizedEmail="setcadmin"
               referenceDateStr={`${activeYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`}
             />
           )}

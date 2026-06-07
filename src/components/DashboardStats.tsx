@@ -227,7 +227,7 @@ export default function DashboardStats({
     e.preventDefault();
     if (!taskTitle.trim() || !taskAssignee) return;
 
-    const currentMemberName = members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase())?.name || 'Le Minh Vuong';
+    const currentMemberName = members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase())?.name || 'SETC Creator Admin';
 
     const newTask: Task = {
       id: `task-${Date.now()}`,
@@ -257,8 +257,7 @@ export default function DashboardStats({
   };
 
   // Check if current user is authorized to assign tasks
-  const isAuthorizedToAssign = currentUserEmail.toLowerCase() === 'vuongle0810@gmail.com' || 
-                               currentUserEmail.toLowerCase() === 'setcadmin' || 
+  const isAuthorizedToAssign = currentUserEmail.toLowerCase() === 'setcadmin' || 
                                currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org';
 
   const months = [
@@ -674,7 +673,9 @@ export default function DashboardStats({
                 </div>
                 <div className="space-y-1.5 text-right flex flex-col justify-end">
                   <div className="text-[9px] text-slate-400 font-medium font-sans">Authorized Creator</div>
-                  <div className="text-[11px] font-bold text-emerald-800 font-sans truncate">Le Minh Vuong (HSE Instructor)</div>
+                  <div className="text-[11px] font-bold text-emerald-800 font-sans truncate">
+                    {members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase())?.name || 'SETC Creator Admin'}
+                  </div>
                 </div>
               </div>
 

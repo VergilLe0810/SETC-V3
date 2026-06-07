@@ -11,10 +11,10 @@ interface ProfileViewProps {
 }
 
 export default function ProfileView({
-  fullName = "Le Minh Vuong",
-  dob = "1990-08-10",
-  position = "HSE Instructor",
-  email = "vuongle0810@gmail.com",
+  fullName = "SETC Creator Admin",
+  dob = "1985-05-15",
+  position = "Director (Level 4)",
+  email = "setcadmin",
   responsibilities = [
     "Training Curriculum Evaluation and Course Design coordination",
     "On-site Safety Evaluation certifications and Task assignation",

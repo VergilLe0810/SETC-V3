@@ -74,8 +74,7 @@ export default function TimelineView({
 }: TimelineViewProps) {
   const loggedInMember = members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase());
   const currentUserLevel = loggedInMember?.authorizedLevel?.toLowerCase() || 
-    (currentUserEmail.toLowerCase() === 'vuongle0810@gmail.com' || 
-     currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org' || 
+    (currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org' || 
      currentUserEmail.toLowerCase() === 'setcadmin' ? 'level 4' : 'level 1');
   const hasAssignmentAccess = currentUserLevel === 'level 3' || currentUserLevel === 'level 4';
 

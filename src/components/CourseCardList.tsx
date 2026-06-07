@@ -42,8 +42,7 @@ export default function CourseCardList({
 
   // Auth level check
   const currentMember = members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase());
-  const hasLevel4Access = currentUserEmail.toLowerCase() === 'vuongle0810@gmail.com' || 
-                          currentUserEmail.toLowerCase() === 'setcadmin' ||
+  const hasLevel4Access = currentUserEmail.toLowerCase() === 'setcadmin' ||
                           currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org' ||
                           currentMember?.authorizedLevel?.toLowerCase() === 'level 4';
 

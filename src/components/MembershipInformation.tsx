@@ -872,7 +872,7 @@ export default function MembershipInformation({
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Le Minh Vuong"
+                      placeholder="e.g. Nguyen Van A"
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 font-medium text-slate-900"
                     />
                   </div>
