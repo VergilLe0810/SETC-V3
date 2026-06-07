@@ -833,7 +833,7 @@ export default function App() {
                      activeTab === 'calendar' ? 'Calendar Planner' : 
                      activeTab === 'catalog' ? 'Courses List' : 
                      activeTab === 'admin' ? 'Schedule Manager' : 
-                     activeTab === 'workspace' ? 'Drive & Forms Hub' : 'Membership Information'}
+                     activeTab === 'workspace' ? 'Drive & Forms Hub' : 'General Information'}
                   </span>
                 </p>
               </div>
@@ -1130,7 +1130,7 @@ export default function App() {
               <option value="calendar">📅 Calendar Planner</option>
               <option value="catalog">📚 Courses List</option>
               <option value="admin">⚙️ Schedule Manager</option>
-              <option value="memberships">👥 Membership Information</option>
+              <option value="memberships">👥 General Information</option>
               <option value="workspace">☁️ Drive & Sheets Hub</option>
             </select>
             <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
@@ -1211,6 +1211,10 @@ export default function App() {
               currentUserEmail={userEmail}
               authorizedEmail="setcadmin"
               referenceDateStr={`${activeYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`}
+              courses={courses}
+              onAddCourse={handleAddCourse}
+              onUpdateCourse={handleUpdateCourse}
+              onRemoveCourse={handleRemoveCourse}
             />
           )}
 

@@ -56,7 +56,7 @@ export default function LoginPage({ onLogin, members, logoSrc }: LoginPageProps)
     );
 
     if (!matchedMember) {
-      setError('Access Denied: This account is not registered under Membership Information.');
+      setError('Access Denied: This account is not registered under General Information.');
       return;
     }
 

@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Member } from '../types';
+import { Member, Course } from '../types';
 import { formatDate } from '../utils/date';
+import { CLASSROOMS } from '../data';
+import CourseList from './CourseList';
 import { 
   Users, 
   UserPlus, 
@@ -35,6 +37,10 @@ interface MembershipInformationProps {
   currentUserEmail: string;
   authorizedEmail: string;
   referenceDateStr?: string;
+  courses?: Course[];
+  onAddCourse?: (course: Course) => void;
+  onUpdateCourse?: (course: Course) => void;
+  onRemoveCourse?: (id: string) => void;
 }
 
 // Helper to format YYYY-MM-DD string to DD/MM/YYYY for input prefill
@@ -90,11 +96,18 @@ export default function MembershipInformation({
   onSetMembers,
   currentUserEmail,
   authorizedEmail,
-  referenceDateStr = '2026-06-04'
+  referenceDateStr = '2026-06-04',
+  courses = [],
+  onAddCourse = () => {},
+  onUpdateCourse = () => {},
+  onRemoveCourse = () => {}
 }: MembershipInformationProps) {
   const isAuthorized = currentUserEmail.toLowerCase() === authorizedEmail.toLowerCase() || 
                        currentUserEmail.toLowerCase() === 'setcadmin' || 
                        currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org';
+
+  const [activeSection, setActiveSection] = useState<'membership' | 'courses' | 'classrooms'>('membership');
+  const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
 
   // Tabs: 'registry' | 'birthdays'
   const [activeSubTab, setActiveSubTab] = useState<'registry' | 'birthdays'>('registry');
@@ -410,41 +423,34 @@ export default function MembershipInformation({
             <Users className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-sm font-extrabold text-slate-900">Membership Information</h2>
-            <p className="text-[11px] text-slate-500">Manage center personnel registry and monitor upcoming milestone birthdays</p>
+            <h2 className="text-sm font-extrabold text-slate-900">General Information</h2>
+            <p className="text-[11px] text-slate-500">
+              {activeSection === 'classrooms' && 'Monitor and manage academy classrooms and lab resources'}
+            </p>
           </div>
         </div>
-        
-        {/* Toggle navigation for Directory vs Birthdays */}
-        <div className="flex bg-slate-100 p-1 rounded-xl self-start md:self-auto border border-slate-200/40">
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('registry')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeSubTab === 'registry' 
-                ? 'bg-white text-slate-900 shadow-sm' 
-                : 'text-slate-500 hover:text-slate-850'
-            }`}
-          >
-            <Users className="h-3.5 w-3.5" />
-            <span>Personnel Registry</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('birthdays')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeSubTab === 'birthdays' 
-                ? 'bg-white text-slate-900 shadow-sm' 
-                : 'text-slate-500 hover:text-slate-850'
-            }`}
-          >
-            <Cake className="h-3.5 w-3.5" />
-            <span>Upcoming Birthdays</span>
-          </button>
+
+        {/* Selection box on the right of the block */}
+        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1 shrink-0">
+          <div className="relative">
+            <select
+              id="general-info-view-select"
+              value={activeSection}
+              onChange={(e) => setActiveSection(e.target.value as 'membership' | 'courses' | 'classrooms')}
+              className="pl-3 pr-8 py-1.5 text-xs font-bold bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-md text-slate-800 focus:ring-1 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden transition-all cursor-pointer appearance-none min-w-[210px]"
+            >
+              <option value="membership">👥 Membership</option>
+              <option value="courses">📚 Courses</option>
+              <option value="classrooms">🏢 Classroom</option>
+            </select>
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+              <ChevronRight className="h-3 w-3 rotate-90" />
+            </div>
+          </div>
         </div>
       </div>
 
-      {activeSubTab === 'registry' ? (
+      {activeSection === 'membership' && (
         /* PERSONNEL REGISTRY VIEW */
         <div className="w-full space-y-6 animate-in fade-in duration-200">
 
@@ -457,7 +463,6 @@ export default function MembershipInformation({
                     {filteredMembers.length} Registered
                   </span>
                 </h3>
-                <p className="text-[10px] text-slate-400">Searchable database containing training center authorized personnel</p>
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
@@ -597,12 +602,7 @@ export default function MembershipInformation({
                                 ) : (
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      if (window.confirm(`Permanently delete registry entry for ${member.name}?`)) {
-                                        onRemoveMember(member.id);
-                                        if (editingId === member.id) cancelEdit();
-                                      }
-                                    }}
+                                    onClick={() => setMemberToDelete(member)}
                                     className="p-1.5 text-slate-550 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100 cursor-pointer"
                                     title="Delete Personnel record"
                                   >
@@ -621,177 +621,119 @@ export default function MembershipInformation({
             </div>
           </div>
         </div>
-      ) : (
-        /* UPCOMING BIRTHDAYS VIEW */
-        <div id="birthdays-container" className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-5 animate-in fade-in duration-200">
-          
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-slate-100 pb-3">
-            <div>
-              <h2 className="text-xs font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                <Cake className="h-4.5 w-4.5 text-emerald-600 animate-bounce" />
-                Academy Membership Birthday Registry
-              </h2>
-              <p className="text-[10px] text-slate-500">
-                Reference Date used for remaining countdown calculations: <strong className="text-slate-750">{formatDate(referenceDateStr)}</strong>.
-              </p>
-            </div>
+      )}
 
-            <div className="relative w-full md:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search birthdays..."
-                value={birthdaySearch}
-                onChange={(e) => setBirthdaySearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-hidden focus:bg-white focus:border-emerald-600 text-slate-800 placeholder:text-slate-400 font-medium"
-              />
-            </div>
-          </div>
+      {activeSection === 'courses' && (
+        <div className="w-full space-y-6 animate-in fade-in duration-200">
+          <CourseList 
+            courses={courses}
+            onAddCourse={onAddCourse}
+            onUpdateCourse={onUpdateCourse}
+            onRemoveCourse={onRemoveCourse}
+            currentUserEmail={currentUserEmail}
+            authorizedEmail={authorizedEmail}
+            members={members}
+          />
+        </div>
+      )}
 
-          {/* Celebrating Today Board */}
-          {todayBirthdays.length > 0 && (
-            <div className="bg-linear-to-r from-emerald-500/5 via-teal-500/5 to-indigo-500/5 border border-emerald-500/15 p-4 rounded-xl flex flex-col md:flex-row items-center gap-4 justify-between relative overflow-hidden">
-              <div className="absolute -right-6 -bottom-6 opacity-5 pointer-events-none">
-                <Cake className="w-24 h-24 text-emerald-600" />
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0 border border-emerald-200/50 shadow-sm">
-                  <Gift className="h-5 w-5 text-emerald-600 animate-pulse" />
-                </div>
-                <div className="space-y-0.5 text-center md:text-left">
-                  <div className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-850 text-[8px] font-extrabold px-1.5 py-0.5 rounded-full border border-emerald-250 uppercase tracking-widest">
-                    <Sparkles className="h-2.5 w-2.5 text-emerald-600 animate-spin" />
-                    Celebrating Today!
-                  </div>
-                  <h3 className="text-xs font-black text-slate-900 mt-0.5 leading-tight">
-                    {todayBirthdays.map(b => b.member.name).join(' & ')}
-                  </h3>
-                  <p className="text-[10px] text-slate-600 font-sans">
-                    Happy birthday milestone today! Best wishes from the PV College safety academy!
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-4 shrink-0">
-                {todayBirthdays.map(b => (
-                  <div key={b.member.id} className="text-center font-sans bg-white/70 px-3 py-1.5 rounded-lg border border-emerald-200/40">
-                    <span className="block text-[8px] text-slate-400 uppercase font-black">Turning</span>
-                    <span className="text-lg font-black text-emerald-800 font-mono">{b.age}</span>
-                  </div>
-                ))}
+      {activeSection === 'classrooms' && (
+        <div className="w-full space-y-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-50/50">
+              <div>
+                <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-2">
+                  Training Academy Classroom Assets
+                  <span className="bg-[#549B8C]/15 text-[#549B8C] text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#549B8C]/30 font-mono">
+                    {CLASSROOMS.length} Facilities
+                  </span>
+                </h3>
+                <p className="text-[10px] text-slate-400">Inventory of active simulated labs, classrooms, and practical yards</p>
               </div>
             </div>
-          )}
 
-          {/* 30 Day Countdown Row */}
-          {soonBirthdays.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-[10px] font-black text-slate-400 bg-slate-50/50 px-2.5 py-1 rounded-md uppercase tracking-wider block">
-                ⭐ Upcoming in next 30 days
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {soonBirthdays.map(item => (
-                  <div 
-                    key={item.member.id} 
-                    className="bg-indigo-50/10 border border-indigo-100/70 p-3 rounded-xl flex items-center justify-between shadow-2xs hover:border-indigo-300 transition cursor-default"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-[10px] bg-indigo-100 text-indigo-800 shrink-0 overflow-hidden">
-                        {item.member.avatar ? (
-                          <img src={item.member.avatar} className="w-full h-full object-cover" alt="" />
-                        ) : (
-                          item.member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-                        )}
+            {/* Grid of Classrooms */}
+            <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {CLASSROOMS.map((room) => {
+                // Determine layout styles/facilities based on room id
+                let facilities: string[] = [];
+                let colorTheme = 'emerald';
+                let iconText = '🏢';
+                
+                if (room.id === 'room-101') {
+                  facilities = ['Safety Harnesses', 'High-Angle Rigging Platforms', 'HSE Audits Board', 'Audio System'];
+                  colorTheme = 'emerald';
+                  iconText = '🧪';
+                } else if (room.id === 'room-102') {
+                  facilities = ['Sensors Grid', 'Acoustics Barriers', 'Digital Interactive Whiteboard', 'Climate Simulator'];
+                  colorTheme = 'indigo';
+                  iconText = '🌡️';
+                } else if (room.id === 'room-ex') {
+                  facilities = ['Controlled Fire Igniters', 'Hydrant Network', 'Dry Powder Extinguishers', 'Gas Mask Rack'];
+                  colorTheme = 'rose';
+                  iconText = '🔥';
+                } else if (room.id === 'room-conf') {
+                  facilities = ['Steel Entry Portals', 'O2 Gas Monitors', 'Retrieval Davit Arm & Winch', 'Emergency Lighting'];
+                  colorTheme = 'amber';
+                  iconText = '⚓';
+                } else {
+                  facilities = ['Soil & Liquid Spectrometers', 'Water Quality Analyzers', 'Digital Microscopes', 'Draft Shield Scales'];
+                  colorTheme = 'teal';
+                  iconText = '🌿';
+                }
+
+                return (
+                  <div key={room.id} className="bg-white border border-slate-150 rounded-xl p-4.5 hover:shadow-md hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
+                    <div>
+                      {/* Icon and Stats header */}
+                      <div className="flex items-center justify-between mb-3.5">
+                        <span className="text-2xl">{iconText}</span>
+                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
+                          colorTheme === 'rose' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                          colorTheme === 'indigo' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                          colorTheme === 'amber' ? 'bg-amber-50 text-amber-500 border border-amber-200' :
+                          colorTheme === 'teal' ? 'bg-teal-50 text-teal-700 border border-teal-200' :
+                          'bg-emerald-50 text-emerald-700 border border-emerald-250'
+                        }`}>
+                          {room.building.split(' ')[0]}
+                        </span>
                       </div>
-                      <div className="min-w-0 leading-normal">
-                        <h5 className="font-bold text-slate-900 truncate text-[11px]">{item.member.name}</h5>
-                        <p className="text-[9.5px] text-slate-400 truncate font-semibold">{item.member.position}</p>
-                        <span className="text-[9px] text-indigo-700/80 font-mono font-bold mt-0.5 block">DOB: {formatDate(item.member.dob)}</span>
+
+                      <h4 className="text-xs font-extrabold text-slate-850 truncate">{room.name}</h4>
+                      <p className="text-[10px] text-slate-450 mt-0.5 flex items-center gap-1">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300"></span>
+                        {room.building}
+                      </p>
+
+                      <div className="mt-4 space-y-1.5">
+                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Facilities & Gear:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {facilities.map((fac, idx) => (
+                            <span key={idx} className="bg-slate-50 border border-slate-150 text-slate-600 text-[9px] px-1.5 py-0.5 rounded font-medium">
+                              {fac}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-[9.5px] text-indigo-800 font-extrabold font-mono bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
-                        {item.daysRemaining} days
+
+                    <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-[8px] text-slate-400 uppercase font-black">Capacity Limit</span>
+                        <span className="text-xs font-black text-slate-850 font-mono">{room.capacity} students</span>
                       </div>
-                      <span className="text-[9px] text-slate-450 block mt-1">Turns {item.nextAge}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50">
+                          Active Lab Asset
+                        </span>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Full Birthday Calendar Grid */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs bg-white">
-            <div className="px-4 py-2.5 bg-slate-50/60 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                <Cake className="h-4 w-4 text-[#549B8C]" />
-                All Personnel Birthdays Schedule
-              </span>
-              <span className="text-[9.5px] font-bold text-slate-450 font-mono">{birthdayList.length} total list</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase bg-slate-50/15">
-                    <th className="px-4 py-2">Member</th>
-                    <th className="px-4 py-2">Date of Birth</th>
-                    <th className="px-4 py-2">Current Age</th>
-                    <th className="px-4 py-2">Upcoming occurrence</th>
-                    <th className="px-4 py-2 text-right">Countdown</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredBirthdays.map((item) => {
-                    return (
-                      <tr 
-                        key={item.member.id} 
-                        className={`text-xs hover:bg-slate-50/40 transition-colors ${
-                          item.isToday ? 'bg-emerald-50/15 font-semibold text-emerald-950' : ''
-                        }`}
-                      >
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6.5 h-6.5 rounded-full flex items-center justify-center font-bold text-[9px] bg-slate-150 text-slate-750 overflow-hidden shrink-0">
-                              {item.member.avatar ? (
-                                <img src={item.member.avatar} className="w-full h-full object-cover" alt="" />
-                              ) : (
-                                item.member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-                              )}
-                            </div>
-                            <div>
-                              <span className="font-bold text-slate-800">{item.member.name}</span>
-                              <p className="text-[9px] text-slate-450 font-mono mt-0.5">{item.member.position}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-slate-600">{formatDate(item.member.dob)}</td>
-                        <td className="px-4 py-2.5 text-slate-750 font-semibold">{item.age} years</td>
-                        <td className="px-4 py-2.5 text-slate-800">
-                          {item.nextBdayStr}{' '}
-                          <span className="text-[9.5px] text-slate-400 font-sans font-medium">(turns {item.nextAge})</span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-mono font-black">
-                          {item.isToday ? (
-                            <span className="bg-emerald-100 text-emerald-800 text-[9.5px] px-2 py-0.5 rounded border border-emerald-200">
-                              Today 🎉
-                            </span>
-                          ) : item.isSoon ? (
-                            <span className="bg-indigo-50 text-indigo-805 text-[9.5px] px-2 py-0.5 rounded">
-                              {item.daysRemaining} days left
-                            </span>
-                          ) : (
-                            <span className="text-slate-500 font-medium">{item.daysRemaining} days</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                );
+              })}
             </div>
           </div>
-
         </div>
       )}
 
@@ -1022,6 +964,65 @@ export default function MembershipInformation({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+
+        {memberToDelete && (
+          <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMemberToDelete(null)}
+              className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden w-full max-w-sm relative z-10"
+            >
+              <div className="p-5 space-y-4">
+                <div className="flex gap-3 items-start">
+                  <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 shrink-0">
+                    <AlertCircle className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-xs font-extrabold text-slate-950 uppercase tracking-wider">Confirm Delete</h3>
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
+                      Are you sure you want to permanently delete and decommission the membership registry entry for <span className="font-extrabold text-slate-800">{memberToDelete.name}</span>?
+                    </p>
+                    <p className="text-[10px] text-rose-600 bg-rose-50/55 border border-rose-100 p-2 rounded-lg font-semibold leading-tight">
+                      This action is irreversible and will revoke safety compliance registries.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setMemberToDelete(null)}
+                    className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-850 bg-slate-55 hover:bg-slate-100 rounded-lg transition-all cursor-pointer font-sans"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onRemoveMember(memberToDelete.id);
+                      if (editingId === memberToDelete.id) cancelEdit();
+                      setMemberToDelete(null);
+                    }}
+                    className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-all cursor-pointer flex items-center gap-1 font-sans"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Confirm Delete</span>
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

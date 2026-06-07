@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Course, 
   CourseCategory, 
@@ -55,6 +56,7 @@ export default function CourseList({
 
   // Editing mode
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
 
   // Form states
   const [code, setCode] = useState('');
@@ -733,14 +735,7 @@ export default function CourseList({
                             {/* Delete Program - Locked/Visible to Level 4 */}
                             {hasLevel4Access ? (
                               <button
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to permanently delete and decommission course ${c.code}?`)) {
-                                    onRemoveCourse(c.id);
-                                    if (editingId === c.id) {
-                                      cancelEdit();
-                                    }
-                                  }
-                                }}
+                                onClick={() => setCourseToDelete(c)}
                                 className="p-2 bg-white text-rose-605 border border-slate-200 hover:border-rose-200 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all inline-flex items-center justify-center cursor-pointer"
                                 title="Delete Course Program"
                               >
@@ -769,6 +764,72 @@ export default function CourseList({
         </div>
 
       </div>
+
+      {/* Confirm Deletion Pop-up Window Modal */}
+      <AnimatePresence>
+        {courseToDelete && (
+          <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setCourseToDelete(null)}
+              className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs"
+            />
+
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden w-full max-w-sm relative z-10"
+            >
+              <div className="p-5 space-y-4">
+                <div className="flex gap-3 items-start">
+                  <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-650 shrink-0">
+                    <AlertCircle className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-xs font-extrabold text-slate-950 uppercase tracking-wider">Confirm Delete</h3>
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
+                      Are you sure you want to permanently delete and decommission standard training course <span className="font-extrabold text-slate-800">{courseToDelete.code}</span> ({courseToDelete.title})?
+                    </p>
+                    <p className="text-[10px] text-rose-600 bg-rose-50/55 border border-rose-100 p-2 rounded-lg font-semibold leading-tight">
+                      This action is irreversible and will purge curriculum records.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setCourseToDelete(null)}
+                    className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-850 bg-slate-55 hover:bg-slate-100 rounded-lg transition-all cursor-pointer font-sans"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onRemoveCourse(courseToDelete.id);
+                      if (editingId === courseToDelete.id) {
+                        cancelEdit();
+                      }
+                      setCourseToDelete(null);
+                    }}
+                    className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-all cursor-pointer flex items-center gap-1 font-sans"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Confirm Delete</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
