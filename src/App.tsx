@@ -37,8 +37,6 @@ import CourseList from './components/CourseList';
 import ProfileView from './components/ProfileView';
 import DashboardMonthBirthdays from './components/DashboardMonthBirthdays';
 import LoginPage from './components/LoginPage';
-import { initAuth, googleSignIn, googleLogout } from './utils/googleAuth';
-import { syncMembersToGoogleSheet, saveMembersToGoogleDrive, loadMembersFromGoogleDrive } from './utils/googleSheetsSync';
 // @ts-ignore
 import logoImg from './assets/images/regenerated_image_1780583890425.jpg';
 
@@ -91,131 +89,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'timeline' | 'memberships' | 'profile' | 'courses'>('timeline');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedSession, setSelectedSession] = useState<CourseSession | null>(null);
-
-  // Google Workspace Sync States
-  const [googleUser, setGoogleUser] = useState<any>(null);
-  const [googleToken, setGoogleToken] = useState<string | null>(null);
-  const [isGoogleSyncing, setIsGoogleSyncing] = useState<boolean>(false);
-  const [lastSyncedTime, setLastSyncedTime] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [showRestoreOffer, setShowRestoreOffer] = useState<boolean>(false);
-  const [cloudSaveCount, setCloudSaveCount] = useState<number>(0);
-
-  // Listen for Google Auth redirects or popups in background
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      async (user, token) => {
-        setGoogleUser(user);
-        setGoogleToken(token);
-        
-        // Scan for existing saves on Google Drive to allow restoration on other devices
-        try {
-          const cloudMembers = await loadMembersFromGoogleDrive(token);
-          if (cloudMembers && cloudMembers.length > 0) {
-            setCloudSaveCount(cloudMembers.length);
-            setShowRestoreOffer(true);
-          }
-        } catch (e) {
-          console.warn('Google Drive check failed at initialization:', e);
-        }
-      },
-      () => {
-        setGoogleUser(null);
-        setGoogleToken(null);
-        setShowRestoreOffer(false);
-      }
-    );
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  // Shared sync function
-  const syncMembersToCloud = async (currentMembers: Member[], token: string) => {
-    setIsGoogleSyncing(true);
-    setSyncError(null);
-    try {
-      const sheetSuccess = await syncMembersToGoogleSheet(currentMembers, token);
-      const driveSuccess = await saveMembersToGoogleDrive(currentMembers, token);
-      if (sheetSuccess && driveSuccess) {
-        setLastSyncedTime(new Date().toLocaleTimeString());
-      } else {
-        setSyncError(!sheetSuccess ? 'Sheet sync failed.' : 'Drive backup failed.');
-      }
-    } catch (err: any) {
-      setSyncError(err.message || 'Sync failed.');
-    } finally {
-      setIsGoogleSyncing(false);
-    }
-  };
-
-  // Perform background sync on members modification if logged into Google
-  useEffect(() => {
-    if (googleToken) {
-      syncMembersToCloud(members, googleToken);
-    }
-  }, [members, googleToken]);
-
-  const handleConnectGoogle = async () => {
-    try {
-      const result = await googleSignIn();
-      if (result) {
-        setGoogleUser(result.user);
-        setGoogleToken(result.accessToken);
-        
-        // Look for existing cloud saves
-        const cloudMembers = await loadMembersFromGoogleDrive(result.accessToken);
-        if (cloudMembers && cloudMembers.length > 0) {
-          setCloudSaveCount(cloudMembers.length);
-          setShowRestoreOffer(true);
-        } else {
-          // If no cloud save exists, sync current local database up!
-          await syncMembersToCloud(members, result.accessToken);
-        }
-      }
-    } catch (err: any) {
-      console.error('Google Sign-in popup cancelled or failed:', err);
-    }
-  };
-
-  const handleDisconnectGoogle = async () => {
-    await googleLogout();
-    setGoogleUser(null);
-    setGoogleToken(null);
-    setLastSyncedTime(null);
-    setSyncError(null);
-    setShowRestoreOffer(false);
-  };
-
-  const handleForceSync = async () => {
-    if (googleToken) {
-      await syncMembersToCloud(members, googleToken);
-    }
-  };
-
-  const handleRestoreCloud = async () => {
-    if (!googleToken) return;
-    setIsGoogleSyncing(true);
-    setSyncError(null);
-    try {
-      const cloudMembers = await loadMembersFromGoogleDrive(googleToken);
-      if (cloudMembers && cloudMembers.length > 0) {
-        setMembers(cloudMembers);
-        setLastSyncedTime(new Date().toLocaleTimeString());
-        setShowRestoreOffer(false);
-      } else {
-        setSyncError('No cloud save database found.');
-      }
-    } catch (err: any) {
-      setSyncError(err.message || 'Restore failed.');
-    } finally {
-      setIsGoogleSyncing(false);
-    }
-  };
-
-  const handleDismissRestoreOffer = () => {
-    setShowRestoreOffer(false);
-  };
 
   // Real authentication & candidate state management
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
@@ -1380,18 +1253,6 @@ export default function App() {
               onAddCourse={handleAddCourse}
               onUpdateCourse={handleUpdateCourse}
               onRemoveCourse={handleRemoveCourse}
-              googleUser={googleUser}
-              googleToken={googleToken}
-              isGoogleSyncing={isGoogleSyncing}
-              lastSyncedTime={lastSyncedTime}
-              syncError={syncError}
-              showRestoreOffer={showRestoreOffer}
-              cloudSaveCount={cloudSaveCount}
-              onConnectGoogle={handleConnectGoogle}
-              onDisconnectGoogle={handleDisconnectGoogle}
-              onForceSync={handleForceSync}
-              onRestoreCloud={handleRestoreCloud}
-              onDismissRestoreOffer={handleDismissRestoreOffer}
             />
           )}
 

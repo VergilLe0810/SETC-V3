@@ -30,6 +30,7 @@ import { Course, CourseSession, Member, Task } from '../types';
 import { getSessionStatus } from '../data';
 import { getDaysForMonth, MONTH_TO_NUM } from '../utils/dateUtils';
 import { formatDate } from '../utils/date';
+import AITaskSummary from './AITaskSummary';
 
 interface DashboardStatsProps {
   courses: Course[];
@@ -743,6 +744,17 @@ export default function DashboardStats({
         >
           Today
         </button>
+      </div>
+
+      {/* ✨ Tasks Summary Live open box */}
+      <div id="ai-task-summary-dashboard-open-box" className="mb-6 animate-in fade-in slide-in-from-top duration-150">
+        <AITaskSummary 
+          tasks={tasks}
+          userEmail={currentUserEmail}
+          sessions={sessions}
+          courses={courses}
+          members={members}
+        />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-6">
