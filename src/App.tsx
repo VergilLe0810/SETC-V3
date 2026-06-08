@@ -40,6 +40,18 @@ import LoginPage from './components/LoginPage';
 // @ts-ignore
 import logoImg from './assets/images/regenerated_image_1780583890425.jpg';
 
+// Firebase imports
+import { auth, db } from './utils/googleAuth';
+import { onSnapshot, collection, getDocs, doc, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { 
+  dbSaveCourse, dbDeleteCourse, 
+  dbSaveSession, dbDeleteSession, 
+  dbSaveMember, dbDeleteMember, 
+  dbSaveTask, dbDeleteTask,
+  testConnection 
+} from './utils/firebaseSync';
+
 const DEFAULT_TASKS: Task[] = [];
 
 export default function App() {
@@ -151,6 +163,135 @@ export default function App() {
     const saved = localStorage.getItem('se_tasks_v3');
     return saved ? JSON.parse(saved) : DEFAULT_TASKS;
   });
+
+  const [firebaseUser, setFirebaseUser] = useState<any>(null);
+  const [isFirebaseSyncActive, setIsFirebaseSyncActive] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Run boot-time connection test
+    testConnection().then(online => {
+      if (online) {
+        console.log("Firebase Firestore Connection test: SUCCESS");
+      }
+    });
+
+    // Listen to Firebase Authentication state change
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Real-time synchronization when Firebase Auth is logged in
+  useEffect(() => {
+    if (!firebaseUser) {
+      setIsFirebaseSyncActive(false);
+      return;
+    }
+
+    console.log("Firebase logged in. Starting real-time Firestore subscriptions and seeding if empty...");
+
+    // 1. One-time seeding if Firestore collections are empty so user retains their existing offline work instantly!
+    const checkAndSeed = async () => {
+      try {
+        const snapCourses = await getDocs(collection(db, 'courses'));
+        if (snapCourses.empty && courses.length > 0) {
+          console.log("Seeding local courses to Firestore...");
+          for (const c of courses) {
+            await dbSaveCourse(c);
+          }
+        }
+        
+        const snapSessions = await getDocs(collection(db, 'sessions'));
+        if (snapSessions.empty && sessions.length > 0) {
+          console.log("Seeding local sessions to Firestore...");
+          for (const s of sessions) {
+            await dbSaveSession(s);
+          }
+        }
+
+        const snapMembers = await getDocs(collection(db, 'members'));
+        if (snapMembers.empty && members.length > 0) {
+          console.log("Seeding local members to Firestore...");
+          for (const m of members) {
+            if (m.id === 'mem-creator') continue;
+            await dbSaveMember(m);
+          }
+        }
+
+        const snapTasks = await getDocs(collection(db, 'tasks'));
+        if (snapTasks.empty && tasks.length > 0) {
+          console.log("Seeding local tasks to Firestore...");
+          for (const t of tasks) {
+            await dbSaveTask(t);
+          }
+        }
+      } catch (err) {
+        console.error("Auto seeding error:", err);
+      }
+    };
+
+    checkAndSeed().then(() => {
+      setIsFirebaseSyncActive(true);
+    });
+
+    // 2. Real-time Firebase listeners to sync changes made on client or other devices back down
+    const unsubCourses = onSnapshot(collection(db, 'courses'), (snapshot) => {
+      if (!snapshot.empty) {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Course));
+        setCourses(list);
+      }
+    }, (err) => {
+      console.error("Firestore courses sync subscription failed:", err);
+    });
+
+    const unsubSessions = onSnapshot(collection(db, 'sessions'), (snapshot) => {
+      if (!snapshot.empty) {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CourseSession));
+        setSessions(list);
+      }
+    }, (err) => {
+      console.error("Firestore sessions sync subscription failed:", err);
+    });
+
+    const unsubMembers = onSnapshot(collection(db, 'members'), (snapshot) => {
+      if (!snapshot.empty) {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Member));
+        const defaultCreator: Member = {
+          id: 'mem-creator',
+          name: 'SETC Creator Admin',
+          dob: '1985-05-15',
+          position: 'Director (Level 4)',
+          email: 'setcadmin',
+          createdAt: '2026-06-05T00:00:00Z',
+          authorizedLevel: 'level 4',
+          phone: '+84 90 123 4567',
+          password: 'abc123'
+        };
+        const remoteMembers = list.filter(m => m.id !== 'mem-creator');
+        setMembers([defaultCreator, ...remoteMembers]);
+      }
+    }, (err) => {
+      console.error("Firestore members sync subscription failed:", err);
+    });
+
+    const unsubTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
+      if (!snapshot.empty) {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task));
+        setTasks(list);
+      }
+    }, (err) => {
+      console.error("Firestore tasks sync subscription failed:", err);
+    });
+
+    return () => {
+      unsubCourses();
+      unsubSessions();
+      unsubMembers();
+      unsubTasks();
+    };
+  }, [firebaseUser]);
 
   // Save states securely to localStorage
   useEffect(() => {
@@ -590,6 +731,9 @@ export default function App() {
         if (selectedSession && selectedSession.id === sessionId) {
           setSelectedSession(updated);
         }
+        if (auth.currentUser) {
+          dbSaveSession(updated).catch(e => console.error("Firestore enroll error:", e));
+        }
         return updated;
       }
       return s;
@@ -598,11 +742,23 @@ export default function App() {
 
   // Add virtual session from AdminPanel
   const handleAddSession = (newSess: CourseSession) => {
+    if (auth.currentUser) {
+      dbSaveSession(newSess).catch(e => console.error("Firestore add session error:", e));
+    }
     setSessions(prev => [newSess, ...prev]);
 
     // Update parent's course domain with the chosen value if provided
     if (newSess.domain) {
-      setCourses(prev => prev.map(c => c.id === newSess.courseId ? { ...c, domain: newSess.domain } : c));
+      setCourses(prev => prev.map(c => {
+        if (c.id === newSess.courseId) {
+          const updated = { ...c, domain: newSess.domain };
+          if (auth.currentUser) {
+            dbSaveCourse(updated).catch(e => console.error("Firestore course domain update error:", e));
+          }
+          return updated;
+        }
+        return c;
+      }));
     }
 
     // Automatically assign Tasks as system notifications to the assigned Member(s)
@@ -705,12 +861,24 @@ export default function App() {
     }
 
     if (newTasks.length > 0) {
+      if (auth.currentUser) {
+        newTasks.forEach(t => {
+          dbSaveTask(t).catch(e => console.error("Firestore add task error:", e));
+        });
+      }
       setTasks(prev => [...newTasks, ...prev]);
     }
   };
 
   // Remove virtual session
   const handleRemoveSession = (sessionId: string) => {
+    if (auth.currentUser) {
+      dbDeleteSession(sessionId).catch(e => console.error("Firestore delete session error:", e));
+      const tasksToDelete = tasks.filter(t => t.sessionId === sessionId);
+      tasksToDelete.forEach(t => {
+        dbDeleteTask(t.id).catch(e => console.error("Firestore delete session task error:", e));
+      });
+    }
     setSessions(prev => prev.filter(s => s.id !== sessionId));
     setTasks(prev => prev.filter(t => t.sessionId !== sessionId));
     if (selectedSession?.id === sessionId) {
@@ -721,6 +889,9 @@ export default function App() {
 
   // Update virtual session
   const handleUpdateSession = (updatedSess: CourseSession) => {
+    if (auth.currentUser) {
+      dbSaveSession(updatedSess).catch(e => console.error("Firestore update session error:", e));
+    }
     setSessions(prev => prev.map(s => s.id === updatedSess.id ? updatedSess : s));
     if (selectedSession?.id === updatedSess.id) {
       setSelectedSession(updatedSess);
@@ -734,11 +905,18 @@ export default function App() {
       id: `mem-${Date.now()}`,
       createdAt: new Date().toISOString()
     };
+    if (auth.currentUser) {
+      dbSaveMember(newMember).catch(e => console.error("Firestore add member error:", e));
+    }
     setMembers(prev => [newMember, ...prev]);
   };
 
   // Remove member from registry (cannot remove default administrator accounts by any means)
   const handleRemoveMember = (id: string) => {
+    const isUndeletable = id === 'mem-creator';
+    if (!isUndeletable && auth.currentUser) {
+      dbDeleteMember(id).catch(e => console.error("Firestore delete member error:", e));
+    }
     setMembers(prev => {
       return prev.filter(m => {
         const isTarget = m.id === id;
@@ -755,19 +933,31 @@ export default function App() {
 
   // Update member in registry
   const handleUpdateMember = (updatedMember: Member) => {
+    if (auth.currentUser) {
+      dbSaveMember(updatedMember).catch(e => console.error("Firestore update member error:", e));
+    }
     setMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
   };
 
   // Course management handlers
   const handleAddCourse = (newCourse: Course) => {
+    if (auth.currentUser) {
+      dbSaveCourse(newCourse).catch(e => console.error("Firestore add course error:", e));
+    }
     setCourses(prev => [...prev, newCourse]);
   };
 
   const handleUpdateCourse = (updatedCourse: Course) => {
+    if (auth.currentUser) {
+      dbSaveCourse(updatedCourse).catch(e => console.error("Firestore update course error:", e));
+    }
     setCourses(prev => prev.map(c => c.id === updatedCourse.id ? updatedCourse : c));
   };
 
   const handleRemoveCourse = (id: string) => {
+    if (auth.currentUser) {
+      dbDeleteCourse(id).catch(e => console.error("Firestore delete course error:", e));
+    }
     setCourses(prev => prev.filter(c => c.id !== id));
   };
 
@@ -942,9 +1132,15 @@ export default function App() {
                             onClick={() => {
                               if (showCompletedTasksMode) {
                                 const completedTaskIds = tasks.filter(t => t.assignedTo.toLowerCase() === userEmail.toLowerCase() && t.status === 'Completed').map(t => t.id);
+                                if (auth.currentUser) {
+                                  completedTaskIds.forEach(id => dbDeleteTask(id).catch(e => console.error("Firestore delete task error:", e)));
+                                }
                                 setTasks(prev => prev.filter(t => !completedTaskIds.includes(t.id)));
                               } else {
                                 const activeTaskIds = inDeadlineTasks.map(t => t.id);
+                                if (auth.currentUser) {
+                                  activeTaskIds.forEach(id => dbDeleteTask(id).catch(e => console.error("Firestore delete task error:", e)));
+                                }
                                 setTasks(prev => prev.filter(t => !activeTaskIds.includes(t.id)));
                               }
                             }}
@@ -1027,7 +1223,12 @@ export default function App() {
                                         checked={task.status === 'Completed'}
                                         onChange={() => {
                                           if (isFinished) {
-                                            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: t.status === 'Completed' ? 'Open' : 'Completed' } : t));
+                                            const updatedStatus = task.status === 'Completed' ? 'Open' : 'Completed';
+                                            const updatedTask = { ...task, status: updatedStatus };
+                                            if (auth.currentUser) {
+                                              dbSaveTask(updatedTask).catch(e => console.error("Firestore update task status error:", e));
+                                            }
+                                            setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t));
                                           }
                                         }}
                                         className="rounded border-slate-300 h-3.5 w-3.5 cursor-pointer disabled:cursor-not-allowed text-emerald-600 focus:ring-emerald-400 accent-emerald-600"
@@ -1118,7 +1319,12 @@ export default function App() {
                                           checked={task.status === 'Completed'}
                                           onChange={() => {
                                             if (isFinished) {
-                                              setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: t.status === 'Completed' ? 'Open' : 'Completed' } : t));
+                                              const updatedStatus = task.status === 'Completed' ? 'Open' : 'Completed';
+                                              const updatedTask = { ...task, status: updatedStatus };
+                                              if (auth.currentUser) {
+                                                dbSaveTask(updatedTask).catch(e => console.error("Firestore update task status error:", e));
+                                              }
+                                              setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t));
                                             }
                                           }}
                                           className="rounded border-slate-300 h-3.5 w-3.5 cursor-pointer disabled:cursor-not-allowed text-sky-600 focus:ring-sky-400 accent-sky-600"

@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net default catch-all: deny all.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity shapes validations
+    function isValidMember(data) {
+      return data.keys().hasAll(['id', 'name', 'dob', 'position', 'email', 'createdAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.name is string && data.name.size() <= 100
+        && data.dob is string && data.dob.size() <= 20
+        && data.position is string && data.position.size() <= 100
+        && data.email is string && data.email.size() <= 150
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'code', 'title', 'category', 'level', 'description', 'durationDays', 'certificationEarned'])
+        && data.id is string && data.id.size() <= 100
+        && data.code is string && data.code.size() <= 50
+        && data.title is string && data.title.size() <= 250
+        && data.category is string && data.category.size() <= 100
+        && data.level is string && data.level.size() <= 50
+        && data.description is string && data.description.size() <= 3000
+        && data.durationDays is number
+        && data.certificationEarned is string && data.certificationEarned.size() <= 250;
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll(['id', 'courseId', 'startDate', 'endDate', 'startTime', 'endTime', 'instructor', 'classroom', 'maxCapacity'])
+        && data.id is string && data.id.size() <= 100
+        && data.courseId is string && data.courseId.size() <= 100
+        && data.startDate is string && data.startDate.size() <= 20
+        && data.endDate is string && data.endDate.size() <= 20
+        && data.startTime is string && data.startTime.size() <= 15
+        && data.endTime is string && data.endTime.size() <= 15
+        && data.instructor is string && data.instructor.size() <= 100
+        && data.classroom is string && data.classroom.size() <= 100
+        && data.maxCapacity is number;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['id', 'assignedBy', 'assignedTo', 'title', 'description', 'dueDate', 'status', 'createdAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.assignedBy is string && data.assignedBy.size() <= 100
+        && data.assignedTo is string && data.assignedTo.size() <= 150
+        && data.title is string && data.title.size() <= 250
+        && data.description is string && data.description.size() <= 3000
+        && data.dueDate is string && data.dueDate.size() <= 20
+        && data.status is string && data.status.size() <= 50
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    // MATCH: Courses
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(courseId) && isValidCourse(incoming());
+      allow update: if isSignedIn() && isValidId(courseId) && isValidCourse(incoming());
+      allow delete: if isSignedIn() && isValidId(courseId);
+    }
+
+    // MATCH: Sessions
+    match /sessions/{sessionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(sessionId) && isValidSession(incoming());
+      allow update: if isSignedIn() && isValidId(sessionId) && isValidSession(incoming());
+      allow delete: if isSignedIn() && isValidId(sessionId);
+    }
+
+    // MATCH: Members
+    match /members/{memberId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(memberId) && isValidMember(incoming());
+      allow update: if isSignedIn() && isValidId(memberId) && isValidMember(incoming());
+      allow delete: if isSignedIn() && isValidId(memberId);
+    }
+
+    // MATCH: Tasks
+    match /tasks/{taskId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(taskId) && isValidTask(incoming());
+      allow update: if isSignedIn() && isValidId(taskId) && isValidTask(incoming());
+      allow delete: if isSignedIn() && isValidId(taskId);
+    }
+  }
+}
