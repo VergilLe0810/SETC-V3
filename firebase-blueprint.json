@@ -1,107 +1,108 @@
 {
   "entities": {
-    "member": {
+    "Member": {
       "title": "Member",
-      "description": "A personnel or club member record",
+      "description": "System personnel and safety centre members",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique identifier of the member" },
-        "name": { "type": "string", "description": "Full name of the member" },
-        "dob": { "type": "string", "description": "Date of Birth (YYYY-MM-DD)" },
-        "position": { "type": "string", "description": "Job title or position" },
-        "email": { "type": "string", "description": "Email address" },
-        "createdAt": { "type": "string", "description": "ISO timestamp of creation" },
-        "avatar": { "type": "string", "description": "Optional URL for member avatar" },
-        "phone": { "type": "string", "description": "Optional phone number" },
-        "authorizedLevel": { "type": "string", "description": "Authorization level (e.g., level 1, level 4)" },
-        "password": { "type": "string", "description": "Stored credentials for logging in" }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "dob": { "type": "string" },
+        "position": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "avatar": { "type": "string" },
+        "phone": { "type": "string" },
+        "authorizedLevel": { "type": "string" },
+        "password": { "type": "string" }
       },
       "required": ["id", "name", "dob", "position", "email", "createdAt"]
     },
-    "course": {
+    "Course": {
       "title": "Course",
-      "description": "A safety, environmental, or emergency training course",
+      "description": "Safety & environment courses offered by the centre",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique course identifier" },
-        "code": { "type": "string", "description": "Course catalog code (e.g. SF-01)" },
-        "title": { "type": "string", "description": "Official title of the course" },
-        "category": { "type": "string", "description": "Category (e.g. Safety, Compliance)" },
-        "level": { "type": "string", "description": "Course difficulty level (e.g. Basic)" },
-        "description": { "type": "string", "description": "Long-form description of core syllabus" },
-        "durationDays": { "type": "number", "description": "Duration in number of days" },
-        "certificationEarned": { "type": "string", "description": "Name of certificate earned" },
-        "domain": { "type": "string", "description": "Classification group (e.g. HSE, OPITO/GWO)" }
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "level": { "type": "string" },
+        "description": { "type": "string" },
+        "syllabus": { "type": "array" },
+        "durationDays": { "type": "integer" },
+        "certificationEarned": { "type": "string" },
+        "domain": { "type": "string" }
       },
       "required": ["id", "code", "title", "category", "level", "description", "durationDays", "certificationEarned"]
     },
-    "session": {
+    "CourseSession": {
       "title": "CourseSession",
-      "description": "An active or historical training course session",
+      "description": "Offering sessions of specific courses with classroom, date and instructor",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique session identifier" },
-        "courseId": { "type": "string", "description": "Associated course identifier" },
-        "startDate": { "type": "string", "description": "Session starting date (YYYY-MM-DD)" },
-        "endDate": { "type": "string", "description": "Session ending date (YYYY-MM-DD)" },
-        "startTime": { "type": "string", "description": "Daily daily startTime (HH:MM)" },
-        "endTime": { "type": "string", "description": "Daily daily endTime (HH:MM)" },
-        "instructor": { "type": "string", "description": "Instructor full name" },
-        "classroom": { "type": "string", "description": "Classroom or room designation" },
-        "maxCapacity": { "type": "number", "description": "Maximum capacity of enrolled students" },
-        "enrolledIds": { "type": "array", "description": "Array of member IDs enrolled in this session" },
-        "taOfficer": { "type": "string", "description": "Optional Teaching Assistant" },
-        "tgOfficer": { "type": "string", "description": "Optional Teacher Guide/Officer" },
-        "method": { "type": "string", "description": "Method of class delivery (Online/Offline)" },
-        "notes": { "type": "string", "description": "Additional class details/notations" },
-        "domain": { "type": "string", "description": "Classification group" }
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "instructor": { "type": "string" },
+        "classroom": { "type": "string" },
+        "maxCapacity": { "type": "integer" },
+        "enrolledIds": { "type": "array" },
+        "taOfficer": { "type": "string" },
+        "tgOfficer": { "type": "string" },
+        "method": { "type": "string" },
+        "notes": { "type": "string" },
+        "domain": { "type": "string" }
       },
-      "required": ["id", "courseId", "startDate", "endDate", "startTime", "endTime", "instructor", "classroom", "maxCapacity"]
+      "required": ["id", "courseId", "startDate", "endDate", "startTime", "endTime", "instructor", "classroom", "maxCapacity", "enrolledIds"]
     },
-    "task": {
+    "Task": {
       "title": "Task",
-      "description": "An assigned task or training schedule linked to course personnel",
+      "description": "Task/assignment delegated to personnel members",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique identifier of the task" },
-        "assignedBy": { "type": "string", "description": "Name of authority who assigned it" },
-        "assignedTo": { "type": "string", "description": "Email identifier of resource assigned to" },
-        "title": { "type": "string", "description": "Title of task" },
-        "description": { "type": "string", "description": "Action details of task" },
-        "dueDate": { "type": "string", "description": "Due date formatted as YYYY-MM-DD" },
-        "status": { "type": "string", "description": "Task status (Pending, In Progress, Completed)" },
-        "createdAt": { "type": "string", "description": "ISO timestamp indicating creation" },
-        "sessionId": { "type": "string", "description": "Optional linked training session" },
-        "courseName": { "type": "string", "description": "Optional linked training course name" },
-        "assignedRole": { "type": "string", "description": "Instructor, TA, or TG assignment role" },
-        "startDate": { "type": "string", "description": "Optional cached start date" },
-        "endDate": { "type": "string", "description": "Optional cached end date" },
-        "startTime": { "type": "string", "description": "Optional cached startTime" },
-        "endTime": { "type": "string", "description": "Optional cached endTime" },
-        "taOfficer": { "type": "string", "description": "Optional Teaching Assistant in charge" },
-        "tgOfficer": { "type": "string", "description": "Optional Teacher Guide/Officer in charge" },
-        "method": { "type": "string", "description": "Method of delivery" },
-        "instructor": { "type": "string", "description": "Session instructor" }
+        "id": { "type": "string" },
+        "assignedBy": { "type": "string" },
+        "assignedTo": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "assignedRole": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "taOfficer": { "type": "string" },
+        "tgOfficer": { "type": "string" },
+        "method": { "type": "string" },
+        "instructor": { "type": "string" }
       },
       "required": ["id", "assignedBy", "assignedTo", "title", "description", "dueDate", "status", "createdAt"]
     }
   },
   "firestore": {
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "All personnel directory and members profile definitions"
+    },
     "/courses/{courseId}": {
-      "schema": "course",
-      "description": "Contains catalog of all available safety and academic training courses"
+      "schema": "Course",
+      "description": "All training academy course definitions"
     },
     "/sessions/{sessionId}": {
-      "schema": "session",
-      "description": "Contains planned and currently active training sessions and rosters"
-    },
-    "/members/{memberId}": {
-      "schema": "member",
-      "description": "Database of registered personnel directory with authentication details"
+      "schema": "CourseSession",
+      "description": "Course session offerings and enrollments"
     },
     "/tasks/{taskId}": {
-      "schema": "task",
-      "description": "Workflow tasks and class-specific responsibilities assigned to course leads and leads"
+      "schema": "Task",
+      "description": "Task and system notifications assigned to personnel"
     }
   }
 }

@@ -12,19 +12,33 @@ import { Member } from '../types';
 
 interface LoginPageProps {
   onLogin: (email: string) => void;
+  onGoogleSignIn: () => Promise<void>;
   members: Member[];
   logoSrc: string;
 }
 
-export default function LoginPage({ onLogin, members, logoSrc }: LoginPageProps) {
+export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }: LoginPageProps) {
   const [email, setEmail] = useState(() => localStorage.getItem('se_latest_login_email') || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const CREATOR_USERNAME = 'setcadmin';
   const CREATOR_PASSWORD = 'abc123';
+
+  const handleGoogleSignInClick = async () => {
+    setError(null);
+    setIsGoogleLoading(true);
+    try {
+      await onGoogleSignIn();
+    } catch (err: any) {
+      setError(err?.message || 'Google sign in failed. Please try again.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   const validateAndSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +70,17 @@ export default function LoginPage({ onLogin, members, logoSrc }: LoginPageProps)
     );
 
     if (!matchedMember) {
+      if (isCreator) {
+        if (password !== CREATOR_PASSWORD) {
+          setError('Incorrect password for SETC Creator Admin.');
+          return;
+        }
+        setSuccess(true);
+        setTimeout(() => {
+          onLogin('setcadmin');
+        }, 800);
+        return;
+      }
       setError('Access Denied: This account is not registered under General Information.');
       return;
     }
@@ -102,6 +127,36 @@ export default function LoginPage({ onLogin, members, logoSrc }: LoginPageProps)
           <h2 className="text-lg font-extrabold tracking-tight text-slate-800 leading-snug">
             Safety & Environment Training Centre
           </h2>
+        </div>
+
+        {/* Google Sign In button */}
+        <div className="space-y-4">
+          <button
+            type="button"
+            disabled={success || isGoogleLoading}
+            onClick={handleGoogleSignInClick}
+            className="w-full h-12 bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-xs rounded-xl shadow-xs transition-all transform active:scale-[0.99] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGoogleLoading ? (
+              <span className="animate-pulse">Connecting Google Auth...</span>
+            ) : (
+              <>
+                <img 
+                  src="https://www.google.com/favicon.ico" 
+                  className="w-4 h-4" 
+                  alt="Google logo" 
+                  referrerPolicy="no-referrer" 
+                />
+                <span>Sign in with Google Account</span>
+              </>
+            )}
+          </button>
+
+          <div className="flex items-center gap-2 my-4">
+            <div className="h-px bg-slate-200 flex-1" />
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">or Email Credentials</span>
+            <div className="h-px bg-slate-200 flex-1" />
+          </div>
         </div>
 
         {/* Action Form */}
