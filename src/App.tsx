@@ -43,7 +43,7 @@ import logoImg from './assets/images/regenerated_image_1780583890425.jpg';
 // Firebase imports
 import { auth, db } from './utils/googleAuth';
 import { onSnapshot, collection, getDocs, doc, setDoc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { 
   dbSaveCourse, dbDeleteCourse, 
   dbSaveSession, dbDeleteSession, 
@@ -90,7 +90,6 @@ export default function App() {
 
     // Keep userdefined but filter out our defaults to ensure they are never duplicated or overwritten
     const userDefined = loaded.filter(m => 
-      m.email.toLowerCase() !== 'vuongle0810@gmail.com' && 
       m.email.toLowerCase() !== 'setcadmin' &&
       m.email.toLowerCase() !== 'setcadmin@safetycentre.org'
     );
@@ -178,6 +177,11 @@ export default function App() {
     // Listen to Firebase Authentication state change
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
+      if (!user) {
+        signInAnonymously(auth).catch(err => {
+          console.error("Anonymous authentication failed on startup:", err);
+        });
+      }
     });
 
     return () => unsubscribeAuth();
@@ -238,49 +242,41 @@ export default function App() {
 
     // 2. Real-time Firebase listeners to sync changes made on client or other devices back down
     const unsubCourses = onSnapshot(collection(db, 'courses'), (snapshot) => {
-      if (!snapshot.empty) {
-        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Course));
-        setCourses(list);
-      }
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Course));
+      setCourses(list);
     }, (err) => {
       console.error("Firestore courses sync subscription failed:", err);
     });
 
     const unsubSessions = onSnapshot(collection(db, 'sessions'), (snapshot) => {
-      if (!snapshot.empty) {
-        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CourseSession));
-        setSessions(list);
-      }
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CourseSession));
+      setSessions(list);
     }, (err) => {
       console.error("Firestore sessions sync subscription failed:", err);
     });
 
     const unsubMembers = onSnapshot(collection(db, 'members'), (snapshot) => {
-      if (!snapshot.empty) {
-        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Member));
-        const defaultCreator: Member = {
-          id: 'mem-creator',
-          name: 'SETC Creator Admin',
-          dob: '1985-05-15',
-          position: 'Director (Level 4)',
-          email: 'setcadmin',
-          createdAt: '2026-06-05T00:00:00Z',
-          authorizedLevel: 'level 4',
-          phone: '+84 90 123 4567',
-          password: 'abc123'
-        };
-        const remoteMembers = list.filter(m => m.id !== 'mem-creator');
-        setMembers([defaultCreator, ...remoteMembers]);
-      }
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Member));
+      const defaultCreator: Member = {
+        id: 'mem-creator',
+        name: 'SETC Creator Admin',
+        dob: '1985-05-15',
+        position: 'Director (Level 4)',
+        email: 'setcadmin',
+        createdAt: '2026-06-05T00:00:00Z',
+        authorizedLevel: 'level 4',
+        phone: '+84 90 123 4567',
+        password: 'abc123'
+      };
+      const remoteMembers = list.filter(m => m.id !== 'mem-creator');
+      setMembers([defaultCreator, ...remoteMembers]);
     }, (err) => {
       console.error("Firestore members sync subscription failed:", err);
     });
 
     const unsubTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
-      if (!snapshot.empty) {
-        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task));
-        setTasks(list);
-      }
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task));
+      setTasks(list);
     }, (err) => {
       console.error("Firestore tasks sync subscription failed:", err);
     });
