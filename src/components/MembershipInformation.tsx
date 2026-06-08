@@ -25,7 +25,8 @@ import {
   Cake,
   Gift,
   Heart,
-  ChevronRight
+  ChevronRight,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface MembershipInformationProps {
@@ -41,6 +42,19 @@ interface MembershipInformationProps {
   onAddCourse?: (course: Course) => void;
   onUpdateCourse?: (course: Course) => void;
   onRemoveCourse?: (id: string) => void;
+  // Google sync hooks
+  googleUser?: any;
+  googleToken?: string | null;
+  isGoogleSyncing?: boolean;
+  lastSyncedTime?: string | null;
+  syncError?: string | null;
+  showRestoreOffer?: boolean;
+  cloudSaveCount?: number;
+  onConnectGoogle?: () => Promise<void>;
+  onDisconnectGoogle?: () => Promise<void>;
+  onForceSync?: () => Promise<void>;
+  onRestoreCloud?: () => Promise<void>;
+  onDismissRestoreOffer?: () => void;
 }
 
 // Helper to format YYYY-MM-DD string to DD/MM/YYYY for input prefill
@@ -100,7 +114,19 @@ export default function MembershipInformation({
   courses = [],
   onAddCourse = () => {},
   onUpdateCourse = () => {},
-  onRemoveCourse = () => {}
+  onRemoveCourse = () => {},
+  googleUser,
+  googleToken,
+  isGoogleSyncing = false,
+  lastSyncedTime,
+  syncError,
+  showRestoreOffer = false,
+  cloudSaveCount = 0,
+  onConnectGoogle,
+  onDisconnectGoogle,
+  onForceSync,
+  onRestoreCloud,
+  onDismissRestoreOffer
 }: MembershipInformationProps) {
   const isAuthorized = currentUserEmail.toLowerCase() === authorizedEmail.toLowerCase() || 
                        currentUserEmail.toLowerCase() === 'setcadmin' || 
@@ -453,6 +479,115 @@ export default function MembershipInformation({
       {activeSection === 'membership' && (
         /* PERSONNEL REGISTRY VIEW */
         <div className="w-full space-y-6 animate-in fade-in duration-200">
+
+          {/* Google Sheet & Cloud Drive Backup Sync Panel */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all">
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-[#549B8C]">
+                <FileSpreadsheet className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Google Sheets & Drive Sync</h4>
+                  {googleUser ? (
+                    <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="bg-slate-100 text-slate-600 text-[9px] font-bold px-2 py-0.5 rounded-full border border-slate-200">
+                      Not Connected
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 max-w-xl leading-relaxed">
+                  Real-time database mirroring to Google Sheet <a href="https://docs.google.com/spreadsheets/d/1bicHDAB574aSyl9Qeok4OFpwxwcpZQ4VpwTMDKMzzcM/edit#gid=0" target="_blank" rel="noopener noreferrer" className="text-[#549B8C] font-semibold underline hover:text-[#437C70]">"Membership"</a> and a secure cloud save `.json` file in Google Drive.
+                </p>
+                {googleUser && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 font-mono">
+                    <span>Account: <strong className="text-slate-700">{googleUser.email}</strong></span>
+                    {lastSyncedTime && <span>Synced at: <strong className="text-emerald-600">{lastSyncedTime}</strong></span>}
+                    {isGoogleSyncing && <span className="text-emerald-600 animate-pulse">Synchronizing...</span>}
+                    {syncError && <span className="text-red-600 font-semibold">Error: {syncError}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {!googleUser ? (
+                <button
+                  type="button"
+                  onClick={onConnectGoogle}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-3xs cursor-pointer transition-all hover:scale-[1.01]"
+                >
+                  <img src="https://www.google.com/favicon.ico" alt="" className="w-3.5 h-3.5" />
+                  <span>Connect Google Account</span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={onForceSync}
+                    disabled={isGoogleSyncing}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-[#549B8C] hover:bg-[#437C70] rounded-lg shadow-3xs cursor-pointer disabled:opacity-50 transition-all hover:scale-[1.01]"
+                  >
+                    <span>Force Sync Now</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onRestoreCloud}
+                    disabled={isGoogleSyncing}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-3xs cursor-pointer transition-all hover:scale-[1.01]"
+                    title="Load previous membership cloud save from Drive"
+                  >
+                    <span>Restore Cloud Save</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onDisconnectGoogle}
+                    className="inline-flex items-center justify-center p-1.5 text-slate-400 bg-white hover:text-red-600 border border-slate-200 rounded-lg hover:bg-slate-50 shadow-3xs cursor-pointer transition-all"
+                    title="Disconnect Google Account"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Cloud Restore Banner/Modal in line */}
+          {showRestoreOffer && googleUser && (
+            <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4 transition-all animate-in fade-in duration-300">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                  <Sparkles className="h-5 w-5 animate-pulse" />
+                </div>
+                <div>
+                  <h5 className="text-xs font-extrabold text-amber-900 uppercase tracking-wide">Cloud Save File Detected!</h5>
+                  <p className="text-xs text-amber-800 leading-relaxed max-w-xl font-medium">
+                    We found an existing backup with <strong className="font-bold text-amber-950">{cloudSaveCount} records</strong> on your Google Drive. Would you like to restore this data to sync your local directory?
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={onRestoreCloud}
+                  className="px-3.5 py-1.5 text-xs font-extrabold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-3xs cursor-pointer"
+                >
+                  Yes, Restore Now
+                </button>
+                <button
+                  type="button"
+                  onClick={onDismissRestoreOffer}
+                  className="px-3.5 py-1.5 text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 rounded-lg cursor-pointer"
+                >
+                  Skip
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-50/50">
