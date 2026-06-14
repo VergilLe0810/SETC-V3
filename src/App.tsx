@@ -115,10 +115,8 @@ export default function App() {
     return 'all';
   });
 
-  // Observe collections in real-time
+  // Observe Members collection in real-time (always active so that users can log in from other devices/refreshed page)
   useEffect(() => {
-    if (!isLoggedIn) return;
-
     const unsubscribeMembers = onSnapshot(collection(db, 'members'), (snapshot) => {
       const list: Member[] = [];
       snapshot.forEach((doc) => {
@@ -178,6 +176,15 @@ export default function App() {
       console.error("Members real-time snapshot subscription failed:", error);
     });
 
+    return () => {
+      unsubscribeMembers();
+    };
+  }, []);
+
+  // Observe other collections in real-time when logged in
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
     const unsubscribeCourses = onSnapshot(collection(db, 'courses'), (snapshot) => {
       const list: Course[] = [];
       snapshot.forEach((doc) => {
@@ -221,7 +228,6 @@ export default function App() {
     });
 
     return () => {
-      unsubscribeMembers();
       unsubscribeCourses();
       unsubscribeSessions();
       unsubscribeTasks();
@@ -600,24 +606,21 @@ export default function App() {
   };
   */
 
-  // Register internal onProfileUpdate handler to sync changes made inside the popup view
+  // Register internal onProfileUpdate handler to sync changes made inside the popup view and persist them to Google Firebase
   useEffect(() => {
-    (window as any).onProfileUpdate = (id: string, updatedData: { name: string; dob: string; email: string; position: string; avatar?: string }) => {
-      setMembers(prev => {
-        return prev.map(m => {
-          if (m.id === id) {
-            return {
-              ...m,
-              name: updatedData.name,
-              dob: updatedData.dob,
-              email: updatedData.email,
-              position: updatedData.position,
-              avatar: updatedData.avatar
-            };
-          }
-          return m;
-        });
-      });
+    (window as any).onProfileUpdate = async (id: string, updatedData: { name: string; dob: string; email: string; position: string; avatar?: string }) => {
+      const matchingMember = members.find(m => m.id === id);
+      if (matchingMember) {
+        const updatedMember: Member = {
+          ...matchingMember,
+          name: updatedData.name,
+          dob: updatedData.dob,
+          email: updatedData.email,
+          position: updatedData.position,
+          avatar: updatedData.avatar
+        };
+        await handleUpdateMember(updatedMember);
+      }
 
       setUserEmail(prev => {
         const matchingMember = members.find(m => m.id === id);
