@@ -263,8 +263,9 @@ export default function CourseList({
     }
 
     return (
-      <div id={`table-container-${domainName.replace('/', '-').toLowerCase()}`} className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-3xs">
-        <table className="w-full text-left border-collapse table-auto">
+      <div id={`table-container-${domainName.replace('/', '-').toLowerCase()}`} className="overflow-x-auto border-0 md:border md:border-slate-200 md:rounded-xl md:bg-white md:shadow-3xs">
+        {/* Desktop view */}
+        <table className="hidden md:table w-full text-left border-collapse table-auto">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-[9.5px] font-black uppercase text-slate-500 tracking-wider font-mono">
               <th className="px-4 py-2.5 w-[20%] text-left">Mã Khóa học</th>
@@ -356,6 +357,85 @@ export default function CourseList({
             })}
           </tbody>
         </table>
+
+        {/* Mobile cards view */}
+        <div className="md:hidden space-y-3.5">
+          {domainCourses.map((c) => {
+            const isSelectedEditing = editingId === c.id;
+
+            return (
+              <div 
+                id={`course-card-${c.id}`}
+                key={c.id}
+                className={`bg-white border text-left border-slate-200 rounded-xl p-4 shadow-3xs space-y-3 transition-all duration-150 ${
+                  isSelectedEditing ? 'ring-1 ring-emerald-500 bg-emerald-50/10' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between gap-1.5 pb-2.5 border-b border-slate-100">
+                  <div className="space-y-1 text-left">
+                    <span className="font-mono font-black text-[9.5px] bg-slate-100 text-slate-705 px-2 py-0.5 rounded uppercase select-all inline-block">
+                      {c.code}
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-900 leading-snug">
+                      {c.title}
+                    </h4>
+                  </div>
+
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 border border-slate-200 text-[10px] font-bold rounded-md text-slate-750 shrink-0">
+                    <Clock className="h-3 w-3 text-slate-400 shrink-0" />
+                    <span>{c.durationDays} Ngày</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  {hasLevel4Access ? (
+                    <button
+                      id={`btn-edit-course-mb-${c.id}`}
+                      type="button"
+                      onClick={() => startEdit(c)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                        isSelectedEditing 
+                          ? 'bg-emerald-600 border-emerald-650 text-white shadow-xs' 
+                          : 'bg-white border-slate-200 text-slate-700 hover:text-emerald-700 hover:bg-emerald-50'
+                      }`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      <span>{isSelectedEditing ? 'Đang sửa' : 'Sửa'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed inline-flex items-center justify-center gap-1.5 text-xs font-bold"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>Bảo mật</span>
+                    </button>
+                  )}
+
+                  {hasLevel4Access ? (
+                    <button
+                      id={`btn-delete-course-mb-${c.id}`}
+                      type="button"
+                      onClick={() => setCourseToDelete(c)}
+                      className="px-3 py-1.5 bg-white text-rose-600 border border-slate-200 hover:border-rose-200 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all inline-flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Xóa</span>
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="px-3 py-1.5 rounded-lg border border-slate-205 bg-slate-50 text-slate-400 cursor-not-allowed inline-flex items-center justify-center gap-1.5 text-xs font-bold"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>Bảo mật</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   };

@@ -42,6 +42,31 @@ export enum OperationType {
   WRITE = 'write',
 }
 
+/**
+ * Recursively removes all undefined fields from an object so that it can be stored in Firestore safely.
+ */
+export function cleanUndefined(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(cleanUndefined);
+  }
+  if (typeof obj === 'object') {
+    // If it's a Date or other non-plain object, do not clean it
+    const proto = Object.getPrototypeOf(obj);
+    if (proto !== null && proto !== Object.prototype) {
+      return obj;
+    }
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (val !== undefined) {
+        cleaned[key] = cleanUndefined(val);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;

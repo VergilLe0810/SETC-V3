@@ -1140,7 +1140,7 @@ export default function TimelineView({
       </div>
 
       {/* Grid Layout Container */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-3xs max-w-full text-left">
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-3xs max-w-full text-left">
         <div className="w-full flex flex-col select-none">
           {/* Header Row: Days represent */}
           <div className="grid grid-cols-[150px_1fr] md:grid-cols-[185px_1fr] border-b border-slate-100 bg-slate-50/50">
@@ -1184,9 +1184,9 @@ export default function TimelineView({
               const categoryColor: Record<string, { bg: string, border: string }> = {
                 'Safety': { bg: 'bg-amber-100 text-amber-900 border-amber-300', border: 'border-l-4 border-amber-500 text-amber-850 font-semibold' },
                 'Environment': { bg: 'bg-emerald-100 text-emerald-950 border-emerald-300', border: 'border-l-4 border-emerald-500 text-emerald-950 font-semibold' },
-                'Emergency': { bg: 'bg-rose-100 text-rose-950 border-rose-300', border: 'border-l-4 border-rose-500 text-rose-950 font-semibold' },
+                'Emergency': { bg: 'bg-rose-100 text-rose-955 border-rose-300', border: 'border-l-4 border-rose-500 text-rose-950 font-semibold' },
                 'Health': { bg: 'bg-teal-100 text-teal-950 border-teal-300', border: 'border-l-4 border-teal-500 text-teal-950 font-semibold' },
-                'Compliance': { bg: 'bg-indigo-100 text-indigo-950 border-indigo-300', border: 'border-l-4 border-indigo-500 text-indigo-950 font-semibold' },
+                'Compliance': { bg: 'bg-indigo-100 text-indigo-955 border-indigo-300', border: 'border-l-4 border-indigo-500 text-indigo-955 font-semibold' },
               };
 
               const style = categoryColor[course.category] || { bg: 'bg-slate-100 text-slate-900 border-slate-300', border: 'border-l-4 border-slate-500 text-slate-800' };
@@ -1293,6 +1293,100 @@ export default function TimelineView({
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Mobile Card List (Hidden on Desktop) */}
+      <div className="block md:hidden space-y-4">
+        <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest pl-1">
+          Chương trình Đào tạo tháng này ({filteredSessions.length} khoá)
+        </h3>
+        <div className="space-y-3.5">
+          {filteredSessions.map(session => {
+            const course = courses.find(c => c.id === session.courseId);
+            if (!course) return null;
+
+            const status = getSessionStatus(session.startDate, session.endDate, todayDateStr);
+            const statusVn = status === 'ON-GOING' ? 'Đang diễn ra' : status === 'UP-COMING' ? 'Sắp diễn ra' : 'Đã hoàn thành';
+
+            // Styling colors based on category
+            const categoryColors: Record<string, { bg: string, border: string, text: string, textAccent: string }> = {
+              'Safety': { bg: 'bg-amber-500/10 text-amber-900 border-amber-200', border: 'border-l-4 border-amber-500', text: 'text-amber-800', textAccent: 'text-amber-900' },
+              'Environment': { bg: 'bg-emerald-500/10 text-emerald-950 border-emerald-250', border: 'border-l-4 border-emerald-500', text: 'text-emerald-800', textAccent: 'text-emerald-950' },
+              'Emergency': { bg: 'bg-rose-500/10 text-rose-955 border-rose-200', border: 'border-l-4 border-rose-500', text: 'text-rose-800', textAccent: 'text-rose-950' },
+              'Health': { bg: 'bg-teal-500/10 text-teal-950 border-teal-200', border: 'border-l-4 border-teal-500', text: 'text-teal-800', textAccent: 'text-teal-950' },
+              'Compliance': { bg: 'bg-indigo-500/10 text-indigo-950 border-indigo-200', border: 'border-l-4 border-indigo-500', text: 'text-indigo-800', textAccent: 'text-indigo-955' },
+            };
+
+            const style = categoryColors[course.category] || { bg: 'bg-slate-50 text-slate-705 border-slate-200', border: 'border-l-4 border-slate-400', text: 'text-slate-655', textAccent: 'text-slate-900' };
+
+            return (
+              <div 
+                key={session.id}
+                onClick={() => setPopupCourseSession({ course, session })}
+                className={`bg-white border border-slate-200 rounded-xl p-4 shadow-3xs hover:shadow-xs transition-all duration-150 cursor-pointer ${style.border}`}
+              >
+                <div className="flex items-start justify-between gap-1 mb-2">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-black font-mono bg-slate-100 text-slate-750 px-1.5 py-0.5 rounded uppercase select-all">
+                        {course.code}
+                      </span>
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded font-mono uppercase ${
+                        session.method === 'Online' 
+                          ? 'bg-sky-100 text-sky-800' 
+                          : 'bg-emerald-100 text-emerald-855'
+                      }`}>
+                        {session.method === 'Online' ? 'Online' : 'Offline'}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                      {course.title}
+                    </h4>
+                  </div>
+                  
+                  <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                    status === 'ON-GOING' ? 'bg-emerald-100 text-emerald-800 animate-pulse' : 
+                    status === 'UP-COMING' ? 'bg-sky-100 text-sky-800' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {statusVn}
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs text-slate-600 border-t border-slate-100 pt-2.5">
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span>Lịch học: <strong>{formatDate(session.startDate)}</strong> → <strong>{formatDate(session.endDate)}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="font-mono">{session.startTime} - {session.endTime}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">{session.classroom}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">Giảng viên: <strong className="text-slate-800">{session.instructor.split(' (')[0]}</strong></span>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-500 font-semibold">Tỉ lệ tham gia:</span>
+                  <span className="bg-emerald-50 text-emerald-850 font-black px-2.5 py-0.5 rounded-full border border-emerald-100/60">
+                    {session.enrolledIds.length}/{session.maxCapacity} Học viên
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredSessions.length === 0 && (
+            <div className="py-10 text-center bg-slate-50/65 border border-dashed border-slate-205 rounded-xl text-xs text-slate-400 font-bold italic font-serif">
+              Không tìm thấy chương trình hoạt động trong thời gian đã chọn.
+            </div>
+          )}
         </div>
       </div>
 

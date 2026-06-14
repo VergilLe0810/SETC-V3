@@ -321,75 +321,141 @@ export default function DashboardStats({
     }
 
     return (
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 uppercase text-[9.5px] font-bold tracking-wider border-b border-slate-100">
-                <th className="p-3 text-left">Mã Khóa Học</th>
-                <th className="p-3 text-left">Tên Khóa Học</th>
-                <th className="p-3 text-left">Ngày & Giờ Học</th>
-                <th className="p-3 text-left">Hình Thức & Lớp</th>
-                <th className="p-3 text-left">Vai trò của Tôi</th>
-                <th className="p-3 text-right">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-755 font-medium">
-              {sessionsList.map(s => {
-                const c = getCourseForSession(s.courseId);
-                const role = getRoleForSession(s);
-                const status = getSessionStatus(s.startDate, s.endDate, realTimeTodayStr);
+      <>
+        {/* Desktop and Tablet: Grid Table Layout */}
+        <div className="hidden md:block bg-white border border-slate-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 uppercase text-[9.5px] font-bold tracking-wider border-b border-slate-100">
+                  <th className="p-3 text-left">Mã Khóa Học</th>
+                  <th className="p-3 text-left">Tên Khóa Học</th>
+                  <th className="p-3 text-left">Ngày & Giờ Học</th>
+                  <th className="p-3 text-left">Hình Thức & Lớp</th>
+                  <th className="p-3 text-left">Vai trò của Tôi</th>
+                  <th className="p-3 text-right">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-755 font-medium">
+                {sessionsList.map(s => {
+                  const c = getCourseForSession(s.courseId);
+                  const role = getRoleForSession(s);
+                  const status = getSessionStatus(s.startDate, s.endDate, realTimeTodayStr);
 
-                return (
-                  <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="p-3 whitespace-nowrap text-left">
-                      <span className="font-mono font-black text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase">
-                        {c.code}
-                      </span>
-                    </td>
-                    <td className="p-3 text-left">
-                      <div className="text-slate-900 font-bold max-w-xs md:max-w-sm truncate text-left" title={c.title}>
-                        {c.title}
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-semibold text-left">{c.category} ({c.level === 'Basic' ? 'Cơ bản' : c.level || 'Cơ bản'})</div>
-                    </td>
-                    <td className="p-3 whitespace-nowrap text-left">
-                      <div className="text-slate-800 font-semibold font-mono">{formatDate(s.startDate)} → {formatDate(s.endDate)}</div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">{s.startTime} - {s.endTime}</div>
-                    </td>
-                    <td className="p-3 whitespace-nowrap text-left">
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <span className={`text-[9px] font-black font-mono px-1.5 py-0.2 rounded uppercase ${
-                          s.method === 'Online' ? 'bg-sky-100 text-sky-850' : 'bg-emerald-105 text-emerald-850 bg-emerald-100'
-                        }`}>
-                          {s.method === 'Online' ? 'Trực tuyến' : 'Trực tiếp'}
+                  return (
+                    <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-3 whitespace-nowrap text-left">
+                        <span className="font-mono font-black text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase">
+                          {c.code}
                         </span>
-                      </div>
-                      <div className="text-slate-500 font-semibold">{s.classroom}</div>
-                    </td>
-                    <td className="p-3 text-left">
-                      <span className="text-[10.5px] font-bold text-slate-805 bg-slate-100/60 border border-slate-200 rounded px-2 py-0.5 whitespace-nowrap">
-                        {role}
-                      </span>
-                    </td>
-                    <td className="p-3 whitespace-nowrap text-right">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                        status === 'ON-GOING' 
-                          ? 'bg-emerald-100 text-emerald-800 animate-pulse' 
-                          : status === 'COMPLETED' 
-                            ? 'bg-slate-100 text-slate-500' 
-                            : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {status === 'ON-GOING' ? 'ĐANG DIỄN RA' : status === 'COMPLETED' ? 'ĐÃ HOÀN THÀNH' : 'SẮP DIỄN RA'}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="p-3 text-left">
+                        <div className="text-slate-900 font-bold max-w-xs md:max-w-sm truncate text-left" title={c.title}>
+                          {c.title}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-semibold text-left">{c.category} ({c.level === 'Basic' ? 'Cơ bản' : c.level || 'Cơ bản'})</div>
+                      </td>
+                      <td className="p-3 whitespace-nowrap text-left">
+                        <div className="text-slate-800 font-semibold font-mono">{formatDate(s.startDate)} → {formatDate(s.endDate)}</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{s.startTime} - {s.endTime}</div>
+                      </td>
+                      <td className="p-3 whitespace-nowrap text-left">
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className={`text-[9px] font-black font-mono px-1.5 py-0.2 rounded uppercase ${
+                            s.method === 'Online' ? 'bg-sky-100 text-sky-850' : 'bg-emerald-105 text-emerald-850 bg-emerald-100'
+                          }`}>
+                            {s.method === 'Online' ? 'Trực tuyến' : 'Trực tiếp'}
+                          </span>
+                        </div>
+                        <div className="text-slate-500 font-semibold">{s.classroom}</div>
+                      </td>
+                      <td className="p-3 text-left">
+                        <span className="text-[10.5px] font-bold text-slate-805 bg-slate-100/60 border border-slate-200 rounded px-2 py-0.5 whitespace-nowrap">
+                          {role}
+                        </span>
+                      </td>
+                      <td className="p-3 whitespace-nowrap text-right">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                          status === 'ON-GOING' 
+                            ? 'bg-emerald-100 text-emerald-800 animate-pulse' 
+                            : status === 'COMPLETED' 
+                              ? 'bg-slate-100 text-slate-500' 
+                              : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {status === 'ON-GOING' ? 'ĐANG DIỄN RA' : status === 'COMPLETED' ? 'ĐÃ HOÀN THÀNH' : 'SẮP DIỄN RA'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+
+        {/* Mobile: Cozy List Card Layout */}
+        <div className="block md:hidden space-y-3.5">
+          {sessionsList.map(s => {
+            const c = getCourseForSession(s.courseId);
+            const role = getRoleForSession(s);
+            const status = getSessionStatus(s.startDate, s.endDate, realTimeTodayStr);
+
+            return (
+              <div key={s.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-3xs space-y-3 text-left">
+                <div className="flex items-start justify-between gap-1.5">
+                  <div className="space-y-1">
+                    <span className="font-mono font-black text-[9.5px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase select-all inline-block">
+                      {c.code}
+                    </span>
+                    <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                      {c.title}
+                    </h4>
+                    <div className="text-[10.5px] text-slate-450 font-semibold">{c.category} ({c.level === 'Basic' ? 'Cơ bản' : c.level || 'Cơ bản'})</div>
+                  </div>
+                  
+                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase shrink-0 ${
+                    status === 'ON-GOING' 
+                      ? 'bg-emerald-100 text-emerald-800 animate-pulse' 
+                      : status === 'COMPLETED' 
+                        ? 'bg-slate-100 text-slate-500' 
+                        : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {status === 'ON-GOING' ? 'ĐANG DIỄN RA' : status === 'COMPLETED' ? 'ĐÃ THÀNH' : 'SẮP DIỄN RA'}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-slate-650 border-t border-slate-100 pt-2.5">
+                  <div className="flex items-start gap-1.5 justify-between">
+                    <span className="font-semibold text-slate-400 shrink-0">Ngày huấn luyện:</span>
+                    <span className="font-mono font-bold text-slate-800 text-right">{formatDate(s.startDate)} → {formatDate(s.endDate)}</span>
+                  </div>
+                  <div className="flex items-start gap-1.5 justify-between">
+                    <span className="font-semibold text-slate-400 shrink-0">Giờ học:</span>
+                    <span className="font-mono font-bold text-slate-700 text-right">{s.startTime} - {s.endTime}</span>
+                  </div>
+                  <div className="flex items-start gap-1.5 justify-between">
+                    <span className="font-semibold text-slate-400 shrink-0">Lớp học:</span>
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5 text-right justify-end">
+                      <span className={`text-[9px] font-black font-mono px-1.5 py-0.2 rounded uppercase ${
+                        s.method === 'Online' ? 'bg-sky-100 text-sky-850' : 'bg-emerald-100 text-emerald-850'
+                      }`}>
+                        {s.method === 'Online' ? 'Online' : 'Offline'}
+                      </span>
+                      <span>{s.classroom}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-1.5 justify-between">
+                    <span className="font-semibold text-slate-400 shrink-0">Vai trò của Tôi:</span>
+                    <span className="text-[10px] font-black text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded inline-block uppercase leading-none text-right">
+                      {role}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
     );
   };
 

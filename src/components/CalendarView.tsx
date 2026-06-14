@@ -208,7 +208,7 @@ export default function CalendarView({
         <div className="grid grid-cols-7 gap-1.5">
           {calendarCells.map((day, index) => {
             if (day === null) {
-              return <div key={`empty-${index}`} className="bg-slate-50/30 rounded-xl min-h-[135px] border border-dashed border-slate-100" />;
+              return <div key={`empty-${index}`} className="bg-slate-50/30 rounded-xl min-h-[60px] sm:min-h-[135px] border border-dashed border-slate-100" />;
             }
 
             const daySessions = getSessionsForDay(day);
@@ -226,7 +226,7 @@ export default function CalendarView({
                   setModalDay(day);
                   setIsModalOpen(true);
                 }}
-                className={`min-h-[135px] p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between group/cell ${
+                className={`min-h-[60px] sm:min-h-[135px] p-1.5 sm:p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between group/cell ${
                   isFilterSelected
                     ? 'bg-emerald-50/30 border-emerald-400 ring-2 ring-emerald-100 shadow-sm'
                     : isSelected 
@@ -238,7 +238,7 @@ export default function CalendarView({
               >
                 {/* Date marking */}
                 <div className="flex items-center justify-between">
-                  <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded ${
+                  <span className={`text-[10px] sm:text-[11px] font-mono font-bold px-1.5 sm:px-2 py-0.5 rounded ${
                     isToday 
                       ? 'bg-orange-500 text-white font-black' 
                       : isFilterSelected
@@ -250,14 +250,31 @@ export default function CalendarView({
                     {day}
                   </span>
                   {daySessions.length > 0 && (
-                    <span className="text-[9px] font-black text-slate-400 font-mono">
+                    <span className="text-[9px] font-black text-slate-400 font-mono hidden sm:inline">
                       {daySessions.length} khóa
                     </span>
                   )}
                 </div>
 
+                {/* Dots on mobile */}
+                <div className="flex sm:hidden justify-center gap-0.5 mt-1 overflow-hidden">
+                  {daySessions.slice(0, 3).map(s => {
+                    const c = courses.find(item => item.id === s.courseId);
+                    let dotColor = "bg-slate-400";
+                    if (c?.category === 'Safety') dotColor = "bg-amber-500";
+                    else if (c?.category === 'Environment') dotColor = "bg-emerald-500";
+                    else if (c?.category === 'Emergency') dotColor = "bg-rose-500";
+                    else if (c?.category === 'Health') dotColor = "bg-teal-500";
+                    else if (c?.category === 'Compliance') dotColor = "bg-indigo-500";
+                    return <span key={s.id} className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />;
+                  })}
+                  {daySessions.length > 3 && (
+                    <span className="text-[7px] text-slate-400 font-bold leading-none">+</span>
+                  )}
+                </div>
+
                 {/* Timetable-like mini cards */}
-                <div className="mt-2 space-y-1.5 flex-1 min-h-0 overflow-y-auto max-h-[85px] scrollbar-thin">
+                <div className="mt-2 space-y-1.5 flex-1 min-h-0 overflow-y-auto max-h-[85px] scrollbar-thin hidden sm:block">
                   {daySessions.map(s => {
                     const c = courses.find(item => item.id === s.courseId);
                     if (!c) return null;

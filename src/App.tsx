@@ -41,7 +41,7 @@ import LoginPage from './components/LoginPage';
 import logoImg from './assets/images/regenerated_image_1780583890425.jpg';
 
 // Firebase imports
-import { db, auth, logoutUser, OperationType, handleFirestoreError } from './utils/firebase';
+import { db, auth, logoutUser, OperationType, handleFirestoreError, cleanUndefined } from './utils/firebase';
 import { collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch } from 'firebase/firestore';
 
 const DEFAULT_TASKS: Task[] = [];
@@ -89,6 +89,7 @@ export default function App() {
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState<boolean>(false);
   const [showCompletedTasksMode, setShowCompletedTasksMode] = useState<boolean>(false);
   const [isLogoMenuOpen, setIsLogoMenuOpen] = useState<boolean>(false);
+  const [isSectionDropdownOpen, setIsSectionDropdownOpen] = useState<boolean>(false);
   const [liveTime, setLiveTime] = useState('');
 
   const [activeMonth, setActiveMonth] = useState<string>(() => {
@@ -192,7 +193,7 @@ export default function App() {
       });
       if (snapshot.empty) {
         INITIAL_COURSES.forEach((course) => {
-          setDoc(doc(db, "courses", course.id), course).catch((err) => console.error(err));
+          setDoc(doc(db, "courses", course.id), cleanUndefined(course)).catch((err) => console.error(err));
         });
       } else {
         setCourses(list);
@@ -208,7 +209,7 @@ export default function App() {
       });
       if (snapshot.empty) {
         INITIAL_SESSIONS.forEach((session) => {
-          setDoc(doc(db, "sessions", session.id), session).catch((err) => console.error(err));
+          setDoc(doc(db, "sessions", session.id), cleanUndefined(session)).catch((err) => console.error(err));
         });
       } else {
         setSessions(list);
@@ -648,7 +649,7 @@ export default function App() {
     const nextEnrolled = [...session.enrolledIds, `student-${Date.now()}`];
     const updated = { ...session, enrolledIds: nextEnrolled };
     try {
-      await setDoc(doc(db, "sessions", sessionId), updated);
+      await setDoc(doc(db, "sessions", sessionId), cleanUndefined(updated));
       if (selectedSession && selectedSession.id === sessionId) {
         setSelectedSession(updated);
       }
@@ -660,7 +661,7 @@ export default function App() {
   // Add virtual session from AdminPanel
   const handleAddSession = async (newSess: CourseSession) => {
     try {
-      await setDoc(doc(db, "sessions", newSess.id), newSess);
+      await setDoc(doc(db, "sessions", newSess.id), cleanUndefined(newSess));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `sessions/${newSess.id}`);
     }
@@ -774,7 +775,7 @@ export default function App() {
 
     for (const task of newTasks) {
       try {
-        await setDoc(doc(db, "tasks", task.id), task);
+        await setDoc(doc(db, "tasks", task.id), cleanUndefined(task));
       } catch (e) {
         handleFirestoreError(e, OperationType.WRITE, `tasks/${task.id}`);
       }
@@ -801,7 +802,7 @@ export default function App() {
   // Update virtual session
   const handleUpdateSession = async (updatedSess: CourseSession) => {
     try {
-      await setDoc(doc(db, "sessions", updatedSess.id), updatedSess);
+      await setDoc(doc(db, "sessions", updatedSess.id), cleanUndefined(updatedSess));
       if (selectedSession?.id === updatedSess.id) {
         setSelectedSession(updatedSess);
       }
@@ -819,7 +820,7 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
     try {
-      await setDoc(doc(db, "members", emailKey), newMember);
+      await setDoc(doc(db, "members", emailKey), cleanUndefined(newMember));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `members/${emailKey}`);
     }
@@ -852,7 +853,7 @@ export default function App() {
       if (oldEmailKey && oldEmailKey !== emailKey) {
         await deleteDoc(doc(db, "members", oldEmailKey));
       }
-      await setDoc(doc(db, "members", emailKey), updatedMember);
+      await setDoc(doc(db, "members", emailKey), cleanUndefined(updatedMember));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `members/${emailKey}`);
     }
@@ -861,7 +862,7 @@ export default function App() {
   // Course management handlers
   const handleAddCourse = async (newCourse: Course) => {
     try {
-      await setDoc(doc(db, "courses", newCourse.id), newCourse);
+      await setDoc(doc(db, "courses", newCourse.id), cleanUndefined(newCourse));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `courses/${newCourse.id}`);
     }
@@ -869,7 +870,7 @@ export default function App() {
 
   const handleUpdateCourse = async (updatedCourse: Course) => {
     try {
-      await setDoc(doc(db, "courses", updatedCourse.id), updatedCourse);
+      await setDoc(doc(db, "courses", updatedCourse.id), cleanUndefined(updatedCourse));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `courses/${updatedCourse.id}`);
     }
@@ -887,7 +888,7 @@ export default function App() {
     const nextStatus = task.status === 'Completed' ? 'Pending' : 'Completed';
     const updated = { ...task, status: nextStatus };
     try {
-      await setDoc(doc(db, "tasks", task.id), updated);
+      await setDoc(doc(db, "tasks", task.id), cleanUndefined(updated));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `tasks/${task.id}`);
     }
@@ -995,12 +996,69 @@ export default function App() {
                 <h1 className="text-sm sm:text-base font-extrabold tracking-tight text-white leading-normal">
                   Petrovietnam - Safety & Environment Training Centre
                 </h1>
-                <p className="text-xs text-emerald-100 font-semibold flex items-center gap-1.5 mt-0.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse"></span>
-                  <span className="font-bold text-emerald-50 tracking-wide">
-                    {activeTab === 'timeline' ? 'Dashboard' : 'General Information'}
-                  </span>
-                </p>
+                
+                {/* Integrated Section Selector */}
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse shrink-0"></span>
+                  <div className="relative inline-block text-left">
+                    <button
+                      id="custom-section-dropdown-trigger"
+                      type="button"
+                      onClick={() => setIsSectionDropdownOpen(!isSectionDropdownOpen)}
+                      className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-black text-white hover:text-emerald-100 transition-all py-1 px-1.5 -mx-1.5 rounded-lg hover:bg-white/10 cursor-pointer select-none outline-none"
+                    >
+                      <span>
+                        {activeTab === 'timeline' ? 'Cổng thông tin' : 'Danh mục chung'}
+                      </span>
+                      <ChevronDown className={`h-3 w-3 text-emerald-200 transition-transform duration-200 shrink-0 ${isSectionDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {isSectionDropdownOpen && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-40 bg-transparent" 
+                          onClick={() => setIsSectionDropdownOpen(false)} 
+                        />
+                        <div 
+                          id="custom-section-dropdown-menu"
+                          className="absolute left-0 mt-1.5 w-56 bg-white border border-slate-200 rounded-xl shadow-xl z-55 py-1.5 text-left animate-in fade-in slide-in-from-top-1.5 duration-100 overflow-hidden"
+                        >
+                          <div className="px-3.5 py-1.5 border-b border-slate-100 mb-1">
+                            <span className="text-[10px] font-black text-slate-400 font-mono">Chuyển phân hệ</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('timeline');
+                              setIsSectionDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3.5 py-2 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
+                              activeTab === 'timeline' 
+                                ? 'bg-emerald-50 text-[#549B8C]' 
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span>Cổng thông tin</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('memberships');
+                              setIsSectionDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3.5 py-2 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
+                              activeTab === 'memberships' 
+                                ? 'bg-emerald-50 text-[#549B8C]' 
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span>Danh mục chung</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1306,25 +1364,6 @@ export default function App() {
 
       {/* Main Container Workspace */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full space-y-6">
-        {/* Integrated Module Box-Selection */}
-        <div id="module-selector-box" className="bg-white border border-slate-200 rounded-xl p-2 px-4 shadow-[0_1px_4px_rgba(0,0,0,0.01)] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="space-y-0.5">
-            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest font-mono">Section</h3>
-          </div>
-          <div className="relative w-full sm:w-64 shrink-0">
-            <select
-              id="app-component-select"
-              value={activeTab}
-              onChange={(e) => setActiveTab(e.target.value as any)}
-              className="w-full text-xs font-bold text-slate-800 bg-slate-50 hover:bg-slate-100/70 border border-slate-200/90 rounded-lg px-3 py-1.5 pr-8 cursor-pointer outline-none transition-all appearance-none shadow-3xs"
-            >
-              <option value="timeline">📊 Dashboard</option>
-              <option value="memberships">👥 General Information</option>
-            </select>
-            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
-          </div>
-        </div>
-
         {/* Tab content renderer router */}
         <div id="tab-content-portal" className="transition-all duration-300">
           {activeTab === 'timeline' && (
