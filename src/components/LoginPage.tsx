@@ -12,33 +12,19 @@ import { Member } from '../types';
 
 interface LoginPageProps {
   onLogin: (email: string) => void;
-  onGoogleSignIn: () => Promise<void>;
   members: Member[];
   logoSrc: string;
 }
 
-export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }: LoginPageProps) {
+export default function LoginPage({ onLogin, members, logoSrc }: LoginPageProps) {
   const [email, setEmail] = useState(() => localStorage.getItem('se_latest_login_email') || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const CREATOR_USERNAME = 'setcadmin';
   const CREATOR_PASSWORD = 'abc123';
-
-  const handleGoogleSignInClick = async () => {
-    setError(null);
-    setIsGoogleLoading(true);
-    try {
-      await onGoogleSignIn();
-    } catch (err: any) {
-      setError(err?.message || 'Google sign in failed. Please try again.');
-    } finally {
-      setIsGoogleLoading(false);
-    }
-  };
 
   const validateAndSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,19 +32,19 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
 
     const trimmedInput = email.trim().toLowerCase();
     if (!trimmedInput) {
-      setError('Please enter your username or email address.');
+      setError('Vui lòng nhập tên đăng nhập hoặc địa chỉ email.');
       return;
     }
 
     const isCreator = trimmedInput === CREATOR_USERNAME || trimmedInput === 'setcadmin@safetycentre.org';
 
     if (!isCreator && (!trimmedInput.includes('@') || trimmedInput.length < 5)) {
-      setError('Please enter a valid email address.');
+      setError('Vui lòng nhập địa chỉ email hợp lệ.');
       return;
     }
 
     if (!password) {
-      setError('Please enter your password.');
+      setError('Vui lòng nhập mật khẩu.');
       return;
     }
 
@@ -72,7 +58,7 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
     if (!matchedMember) {
       if (isCreator) {
         if (password !== CREATOR_PASSWORD) {
-          setError('Incorrect password for SETC Creator Admin.');
+          setError('Mật khẩu không chính xác cho Quản trị viên PV College SETC.');
           return;
         }
         setSuccess(true);
@@ -81,20 +67,20 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
         }, 800);
         return;
       }
-      setError('Access Denied: This account is not registered under General Information.');
+      setError('Truy cập bị từ chối: Tài khoản này chưa được đăng ký trong mục Thông tin chung.');
       return;
     }
 
     const expectedPassword = matchedMember.password || CREATOR_PASSWORD;
     if (password !== expectedPassword) {
-      setError(`Incorrect password for ${matchedMember.name}.`);
+      setError(`Mật khẩu không chính xác cho thành viên ${matchedMember.name}.`);
       return;
     }
 
     setSuccess(true);
     setTimeout(() => {
       onLogin(trimmedInput);
-    }, 800);
+    }, 805);
   };
 
   return (
@@ -125,39 +111,11 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
 
           {/* Business Name */}
           <h2 className="text-lg font-extrabold tracking-tight text-slate-800 leading-snug">
-            Safety & Environment Training Centre
+            Trung tâm Đào tạo An toàn & Môi trường
           </h2>
         </div>
 
-        {/* Google Sign In button */}
-        <div className="space-y-4">
-          <button
-            type="button"
-            disabled={success || isGoogleLoading}
-            onClick={handleGoogleSignInClick}
-            className="w-full h-12 bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-xs rounded-xl shadow-xs transition-all transform active:scale-[0.99] flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isGoogleLoading ? (
-              <span className="animate-pulse">Connecting Google Auth...</span>
-            ) : (
-              <>
-                <img 
-                  src="https://www.google.com/favicon.ico" 
-                  className="w-4 h-4" 
-                  alt="Google logo" 
-                  referrerPolicy="no-referrer" 
-                />
-                <span>Sign in with Google Account</span>
-              </>
-            )}
-          </button>
 
-          <div className="flex items-center gap-2 my-4">
-            <div className="h-px bg-slate-200 flex-1" />
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">or Email Credentials</span>
-            <div className="h-px bg-slate-200 flex-1" />
-          </div>
-        </div>
 
         {/* Action Form */}
         <form onSubmit={validateAndSubmit} className="space-y-5">
@@ -175,7 +133,7 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
           {/* Username Field */}
           <div className="space-y-1.5 label-input-group animate-fade-in">
             <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block">
-              Username or Email
+              Tên đăng nhập hoặc Email
             </label>
             <div className="relative">
               <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -184,7 +142,7 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
                 value={email}
                 disabled={success}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email or username"
+                placeholder="Nhập email hoặc tên đăng nhập của bạn"
                 className="w-full bg-slate-50 text-slate-900 border border-slate-200 focus:border-[#549B8C] focus:ring-1 focus:ring-[#549B8C]/20 rounded-xl pl-10 pr-3 py-3 text-xs outline-none transition-all placeholder:text-slate-400 focus:bg-white"
               />
             </div>
@@ -193,7 +151,7 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
           {/* Password Field */}
           <div className="space-y-1.5 label-input-group">
             <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block">
-              Password
+              Mật khẩu
             </label>
             <div className="relative">
               <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -202,13 +160,13 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
                 value={password}
                 disabled={success}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Nhập mật khẩu"
                 className="w-full bg-slate-50 text-slate-900 border border-slate-200 focus:border-[#549B8C] focus:ring-1 focus:ring-[#549B8C]/20 rounded-xl pl-10 pr-10 py-3 text-xs outline-none transition-all placeholder:text-slate-400 focus:bg-white"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 transition-colors p-1"
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -224,10 +182,10 @@ export default function LoginPage({ onLogin, onGoogleSignIn, members, logoSrc }:
             {success ? (
               <>
                 <Sparkles className="h-4.5 w-4.5 animate-spin text-white animate-pulse" />
-                <span>Processing...</span>
+                <span>Đang xử lý...</span>
               </>
             ) : (
-              <span>Sign In</span>
+              <span>Đăng nhập</span>
             )}
           </button>
         </form>

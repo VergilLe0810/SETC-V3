@@ -49,6 +49,21 @@ const MONTH_TO_NUM: Record<string, string> = {
   'December': '12'
 };
 
+const VI_MONTH_NAMES: Record<string, string> = {
+  'January': 'Tháng 1',
+  'February': 'Tháng 2',
+  'March': 'Tháng 3',
+  'April': 'Tháng 4',
+  'May': 'Tháng 5',
+  'June': 'Tháng 6',
+  'July': 'Tháng 7',
+  'August': 'Tháng 8',
+  'September': 'Tháng 9',
+  'October': 'Tháng 10',
+  'November': 'Tháng 11',
+  'December': 'Tháng 12'
+};
+
 const CATEGORY_STYLES: Record<string, { bg: string, border: string, text: string, textAccent: string }> = {
   'Safety': { 
     bg: 'bg-amber-50/90 hover:bg-amber-100/90', 
@@ -143,7 +158,7 @@ export default function CalendarView({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 border-b border-slate-100 pb-4">
           <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <Calendar className="h-5 w-5 text-slate-600" />
-            Calendar
+            Lịch Đào Tạo
           </h2>
 
           {/* Month & Year Dropdown selection */}
@@ -153,10 +168,10 @@ export default function CalendarView({
                 value={activeMonth}
                 onChange={(e) => setActiveMonth?.(e.target.value)}
                 className="text-xs font-bold text-slate-800 bg-slate-50/75 hover:bg-slate-100/70 border border-slate-200 hover:border-slate-350 rounded-xl px-3 py-1.5 pr-8 cursor-pointer outline-none transition-all appearance-none shadow-3xs"
-                title="Select Month"
+                title="Chọn Tháng"
               >
                 {Object.keys(MONTHS_CONFIG).map(m => (
-                  <option key={m} value={m}>{m}</option>
+                  <option key={m} value={m}>{VI_MONTH_NAMES[m] || m}</option>
                 ))}
               </select>
               <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
@@ -167,7 +182,7 @@ export default function CalendarView({
                 value={activeYear}
                 onChange={(e) => setActiveYear?.(Number(e.target.value))}
                 className="text-xs font-bold text-slate-800 bg-slate-50/75 hover:bg-slate-100/70 border border-slate-200 hover:border-slate-350 rounded-xl px-3 py-1.5 pr-8 cursor-pointer outline-none transition-all appearance-none shadow-3xs"
-                title="Select Year"
+                title="Chọn Năm"
               >
                 {[2025, 2026, 2027, 2028].map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -180,13 +195,13 @@ export default function CalendarView({
 
         {/* Days of Week Header */}
         <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs text-slate-400 uppercase tracking-wider mb-2">
-          <div>Sun</div>
-          <div>Mon</div>
-          <div>Tue</div>
-          <div>Wed</div>
-          <div>Thu</div>
-          <div>Fri</div>
-          <div>Sat</div>
+          <div>CN</div>
+          <div>T2</div>
+          <div>T3</div>
+          <div>T4</div>
+          <div>T5</div>
+          <div>T6</div>
+          <div>T7</div>
         </div>
 
         {/* Calendar Grid Cells */}
@@ -236,7 +251,7 @@ export default function CalendarView({
                   </span>
                   {daySessions.length > 0 && (
                     <span className="text-[9px] font-black text-slate-400 font-mono">
-                      {daySessions.length} Act.
+                      {daySessions.length} khóa
                     </span>
                   )}
                 </div>
@@ -300,10 +315,10 @@ export default function CalendarView({
                 </div>
                 <div>
                   <h3 className="text-md font-bold text-slate-900 tracking-tight leading-none">
-                    Courses Scheduled on Day {modalDay}
+                    Khóa Học Được Lên Lịch Cho Ngày {modalDay}
                   </h3>
                   <p className="text-[11px] font-semibold text-slate-500 mt-1 uppercase font-mono">
-                    {activeMonth} {modalDay}, {activeYear} agenda
+                    Thứ tự ngày {modalDay} {VI_MONTH_NAMES[activeMonth] || activeMonth}, {activeYear}
                   </p>
                 </div>
               </div>
@@ -311,7 +326,7 @@ export default function CalendarView({
                 type="button"
                 onClick={() => setIsModalOpen(false)}
                 className="text-slate-400 hover:text-slate-650 p-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                title="Close"
+                title="Đóng"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -322,8 +337,8 @@ export default function CalendarView({
               {selectedDaySessions.length === 0 ? (
                 <div className="text-center py-10 bg-slate-50/50 border border-slate-200 border-dashed rounded-xl p-6">
                   <Calendar className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-                  <p className="text-xs text-slate-600 font-bold">No courses scheduled for this date.</p>
-                  <p className="text-[10px] text-slate-400 mt-1">There are no registration windows or courses running on this specific scheduled day block.</p>
+                  <p className="text-xs text-slate-600 font-bold">Không có khóa học nào được lên lịch cho ngày này.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Không có đợt đăng ký hoặc khóa học nào diễn ra trong ngày này.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -332,16 +347,6 @@ export default function CalendarView({
                     if (!c) return null;
 
                     const status = getSessionStatus(session.startDate, session.endDate, todayDateStr);
-                    const fillPercentage = Math.round((session.enrolledIds.length / session.maxCapacity) * 100);
-
-                    // Category mapping
-                    const catStyles: Record<string, string> = {
-                      'Safety': 'bg-amber-100 text-amber-800 border-amber-200',
-                      'Environment': 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                      'Emergency': 'bg-rose-100 text-rose-800 border-rose-200',
-                      'Health': 'bg-teal-100 text-teal-850 border-teal-200',
-                      'Compliance': 'bg-indigo-100 text-indigo-850 border-indigo-200',
-                    };
 
                     return (
                       <div 
@@ -359,16 +364,16 @@ export default function CalendarView({
                                 ? 'bg-sky-100 text-sky-800 border-sky-200' 
                                 : 'bg-emerald-100 text-emerald-850 border-emerald-200'
                             }`}>
-                              {session.method || 'Offline'}
+                              {session.method === 'Online' ? 'Trực tuyến' : 'Trực tiếp'}
                             </span>
                           </div>
                           
                           {/* Status Badge */}
                           <span className={`inline-block text-[9px] font-black px-2 py-0.5 rounded-full truncate ${
                             status === 'ON-GOING' ? 'bg-emerald-100 text-emerald-800 animate-pulse font-extrabold' :
-                            status === 'UP-COMING' ? 'bg-sky-100 text-sky-800' : 'bg-slate-100 text-slate-600'
+                            status === 'UP-COMING' ? 'bg-sky-100 text-sky-800' : 'bg-slate-105 text-slate-600'
                           }`}>
-                            {status}
+                            {status === 'ON-GOING' ? 'Đang diễn ra' : status === 'UP-COMING' ? 'Sắp diễn ra' : 'Đã hoàn thành'}
                           </span>
                         </div>
 
@@ -384,7 +389,7 @@ export default function CalendarView({
                           <div className="flex items-start gap-2">
                             <MapPin className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                             <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place</span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Địa điểm</span>
                               <span className="text-slate-800 font-bold truncate block">{session.classroom}</span>
                             </div>
                           </div>
@@ -392,16 +397,16 @@ export default function CalendarView({
                           <div className="flex items-start gap-2">
                             <Clock className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                             <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Time and Date</span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Thời gian & Ngày</span>
                               <span className="text-slate-800 font-bold block">{session.startTime} - {session.endTime}</span>
-                              <span className="text-[10px] text-slate-400 block italic mt-0.5 font-medium">📅 {session.startDate} to {session.endDate}</span>
+                              <span className="text-[10px] text-slate-400 block italic mt-0.5 font-medium">📅 Từ {session.startDate} đến {session.endDate}</span>
                             </div>
                           </div>
 
                           <div className="flex items-start gap-2">
                             <User className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                             <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Instructor</span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Giảng viên</span>
                               <span className="text-slate-800 font-bold truncate block">{session.instructor.split(' (')[0]}</span>
                             </div>
                           </div>
@@ -409,9 +414,9 @@ export default function CalendarView({
                           <div className="flex items-start gap-2">
                             <SlidersHorizontal className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                             <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Method</span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Hình thức</span>
                               <span className="text-slate-850 font-bold block">
-                                {session.method || 'Offline'}
+                                {session.method === 'Online' ? 'Trực tuyến' : 'Trực tiếp'}
                               </span>
                             </div>
                           </div>
@@ -419,9 +424,9 @@ export default function CalendarView({
                           <div className="flex items-start gap-2">
                             <Users className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                             <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Teaching Assisstance (TA)</span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Trợ giảng (TA)</span>
                               <span className="text-slate-850 font-bold block whitespace-pre-wrap leading-tight">
-                                {session.taOfficer || 'Not Assigned'}
+                                {session.taOfficer || 'Chưa phân công'}
                               </span>
                             </div>
                           </div>
@@ -429,9 +434,9 @@ export default function CalendarView({
                           <div className="flex items-start gap-2">
                             <Users className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                             <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Teacher Assistance (TG)</span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Trợ lý giảng viên (TG)</span>
                               <span className="text-slate-850 font-bold block whitespace-pre-wrap leading-tight">
-                                {session.tgOfficer || 'Not Assigned'}
+                                {session.tgOfficer || 'Chưa phân công'}
                               </span>
                             </div>
                           </div>
@@ -450,7 +455,7 @@ export default function CalendarView({
                 onClick={() => setIsModalOpen(false)}
                 className="px-6 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-[#559b8c] hover:bg-[#3f766a] rounded-xl transition-all shadow-md active:scale-95 cursor-pointer font-sans"
               >
-                Close
+                Đóng
               </button>
             </div>
           </div>

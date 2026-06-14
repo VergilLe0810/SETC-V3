@@ -22,9 +22,6 @@ import {
   AlertCircle,
   Copy,
   Check,
-  Cake,
-  Gift,
-  Heart,
   ChevronRight
 } from 'lucide-react';
 
@@ -109,9 +106,6 @@ export default function MembershipInformation({
   const [activeSection, setActiveSection] = useState<'membership' | 'courses' | 'classrooms'>('membership');
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
 
-  // Tabs: 'registry' | 'birthdays'
-  const [activeSubTab, setActiveSubTab] = useState<'registry' | 'birthdays'>('registry');
-
   // Determine current logged-in user's clearance Level (treating authorized admin email as level 4 by default)
   const loggedInMember = members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase());
   const currentUserLevel = loggedInMember?.authorizedLevel || 
@@ -122,7 +116,6 @@ export default function MembershipInformation({
 
   // Search filters
   const [registrySearch, setRegistrySearch] = useState('');
-  const [birthdaySearch, setBirthdaySearch] = useState('');
 
   // Clipboard copy state helper
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -163,8 +156,8 @@ export default function MembershipInformation({
     setDob(toInputFormat(member.dob));
     
     const defaultPositions = [
-      "Manager", "Deputy Manager", "Admin Team Leader", "Training Team Leader", 
-      "Maintenance Team Leader", "Instructor", "Admin Staff", "Maintenance Staff", "Support Staff"
+      "Quản lý", "Phó Quản lý", "Trưởng nhóm Trực ban", "Trưởng nhóm Đào tạo", 
+      "Trưởng nhóm Bảo trì", "Giảng viên", "Nhân viên Hành chính", "Nhân viên Bảo trì", "Nhân viên Hỗ trợ"
     ];
     if (defaultPositions.includes(member.position)) {
       setPosition(member.position);
@@ -208,24 +201,24 @@ export default function MembershipInformation({
     const isSelf = editingId && (members.find(m => m.id === editingId)?.email.toLowerCase() === currentUserEmail.toLowerCase());
 
     if (!isAuthorized && !isSelf) {
-      setError('Operation Denied: You do not have permissions to manage other memberships.');
+      setError('Hành động bị từ chối: Bạn không có đủ quyền hạn để quản lý hồ sơ thành viên khác.');
       return;
     }
 
     const finalPosition = position === '__custom__' ? customPosition : position;
 
     // Validation
-    if (!name.trim()) return setError('Full Name is required.');
-    if (!dob.trim()) return setError('Date of Birth is required.');
+    if (!name.trim()) return setError('Họ và Tên không được để trống.');
+    if (!dob.trim()) return setError('Ngày sinh không được để trống.');
     if (!isValidInputDateFormat(dob.trim())) {
-      return setError('Please enter a valid Date of Birth in DD/MM/YYYY format.');
+      return setError('Vui lòng nhập Ngày sinh chính xác theo định dạng DD/MM/YYYY.');
     }
-    if (!finalPosition.trim()) return setError('Position/Role is required.');
-    if (!email.trim()) return setError('E-mail address is required.');
+    if (!finalPosition.trim()) return setError('Chức vụ / Vai trò không được để trống.');
+    if (!email.trim()) return setError('Địa chỉ Email không được để trống.');
     if (!email.includes('@') || email.length < 5) {
-      return setError('Please enter a valid e-mail address.');
+      return setError('Vui lòng nhập địa chỉ Email hợp lệ.');
     }
-    if (!phone.trim()) return setError('Phone Number is required.');
+    if (!phone.trim()) return setError('Số điện thoại không được để trống.');
 
     const standardDbDate = toStandardFormat(dob.trim());
 
@@ -247,7 +240,7 @@ export default function MembershipInformation({
     if (editingId) {
       // Edit verification duplicate
       if (members.some(m => m.id !== editingId && m.email.toLowerCase() === email.trim().toLowerCase())) {
-        return setError('A member with this e-mail address is already registered.');
+        return setError('Email này đã được sử dụng bởi một thành viên khác.');
       }
 
       const existingMember = members.find(m => m.id === editingId);
@@ -267,7 +260,7 @@ export default function MembershipInformation({
         });
       }
       
-      setSuccessMessage('Membership details updated successfully!');
+      setSuccessMessage('Hồ sơ thành viên đã được cập nhật thành công!');
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
@@ -287,7 +280,7 @@ export default function MembershipInformation({
     } else {
       // Prevent duplicate email registration
       if (members.some(m => m.email.toLowerCase() === email.trim().toLowerCase())) {
-        return setError('A member with this e-mail address is already registered.');
+        return setError('Thành viên với địa chỉ Email này đã được đăng ký.');
       }
 
       const finalPasswordForNew = isCreatorAdmin ? (password || 'abc123') : 'abc123';
@@ -303,7 +296,7 @@ export default function MembershipInformation({
         password: finalPasswordForNew
       });
 
-      setSuccessMessage('Membership registered successfully!');
+      setSuccessMessage('Đăng ký thành viên mới thành công!');
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
@@ -341,91 +334,19 @@ export default function MembershipInformation({
       (m.authorizedLevel || '').toLowerCase().includes(registrySearch.toLowerCase());
   });
 
-  // Birthday listing calculations
-  const birthdayList = useMemo(() => {
-    const today = new Date(referenceDateStr);
-    
-    return members
-      .filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org')
-      .map(m => {
-      const birthDate = new Date(m.dob);
-      if (isNaN(birthDate.getTime())) {
-        return {
-          member: m,
-          age: 0,
-          nextBdayStr: 'N/A',
-          daysRemaining: 999,
-          isToday: false,
-          isSoon: false,
-          nextAge: 0,
-        };
-      }
-
-      // Calculate current age
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const mDiff = today.getMonth() - birthDate.getMonth();
-      const dDiff = today.getDate() - birthDate.getDate();
-      if (mDiff < 0 || (mDiff === 0 && dDiff < 0)) {
-        age--;
-      }
-
-      // Calculate next birthday occurrence
-      let nextYear = today.getFullYear();
-      let nextBday = new Date(nextYear, birthDate.getMonth(), birthDate.getDate());
-      
-      // If the birthday is earlier in the year than today's date, it will occur next year
-      if (nextBday < today) {
-        nextYear += 1;
-        nextBday = new Date(nextYear, birthDate.getMonth(), birthDate.getDate());
-      }
-
-      // Calculate exact difference in days
-      const t1 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-      const t2 = new Date(nextBday.getFullYear(), nextBday.getMonth(), nextBday.getDate()).getTime();
-      const daysRemaining = Math.round((t2 - t1) / (1000 * 60 * 60 * 24));
-
-      const isToday = daysRemaining === 0;
-      const isSoon = daysRemaining <= 30 && daysRemaining > 0;
-      const nextAge = age + (isToday ? 0 : 1);
-
-      return {
-        member: m,
-        age,
-        nextAge,
-        nextBdayStr: formatDate(nextBday),
-        daysRemaining,
-        isToday,
-        isSoon,
-      };
-    }).sort((a, b) => a.daysRemaining - b.daysRemaining);
-  }, [members, referenceDateStr]);
-
-  // Apply birthday search filtering
-  const filteredBirthdays = useMemo(() => {
-    if (!birthdaySearch.trim()) return birthdayList;
-    const query = birthdaySearch.toLowerCase();
-    return birthdayList.filter(item => 
-      item.member.name.toLowerCase().includes(query) ||
-      item.member.position.toLowerCase().includes(query)
-    );
-  }, [birthdayList, birthdaySearch]);
-
-  const todayBirthdays = filteredBirthdays.filter(b => b.isToday);
-  const soonBirthdays = filteredBirthdays.filter(b => b.isSoon);
-
   return (
     <div id="membership-info-container" className="space-y-6 w-full max-w-7xl mx-auto">
       
       {/* Sub-tab Switcher Header bar */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-3xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 text-left">
           <div className="bg-[#549B8C]/15 text-[#549B8C] p-2 rounded-xl">
             <Users className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-sm font-extrabold text-slate-900">General Information</h2>
+            <h2 className="text-sm font-extrabold text-slate-900">Thông tin Hệ thống</h2>
             <p className="text-[11px] text-slate-500">
-              {activeSection === 'classrooms' && 'Monitor and manage academy classrooms and lab resources'}
+              {activeSection === 'classrooms' ? 'Giám sát và quản lý phòng học và tài nguyên phòng thực hành' : activeSection === 'courses' ? 'Danh sách tài liệu giảng dạy và quản lý chương trình đào tạo' : 'Quản lý danh sách nhân viên và thành viên học viện'}
             </p>
           </div>
         </div>
@@ -437,11 +358,11 @@ export default function MembershipInformation({
               id="general-info-view-select"
               value={activeSection}
               onChange={(e) => setActiveSection(e.target.value as 'membership' | 'courses' | 'classrooms')}
-              className="pl-3 pr-8 py-1.5 text-xs font-bold bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-md text-slate-800 focus:ring-1 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden transition-all cursor-pointer appearance-none min-w-[210px]"
+              className="pl-3 pr-8 py-1.5 text-xs font-bold bg-white hover:bg-slate-55 border border-slate-200 hover:border-slate-300 rounded-md text-slate-800 focus:ring-1 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden transition-all cursor-pointer appearance-none min-w-[210px]"
             >
-              <option value="membership">👥 Membership</option>
-              <option value="courses">📚 Courses</option>
-              <option value="classrooms">🏢 Classroom</option>
+              <option value="membership">👥 Thành viên & Nhân viên</option>
+              <option value="courses">📚 Khóa học & Chương trình</option>
+              <option value="classrooms">🏢 Sơ đồ Phòng đào tạo</option>
             </select>
             <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
               <ChevronRight className="h-3 w-3 rotate-90" />
@@ -456,11 +377,11 @@ export default function MembershipInformation({
 
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-50/50">
-              <div>
+              <div className="text-left">
                 <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-2">
-                  Personnel Directory List
+                  Danh bạ Nhân sự & Thành viên
                   <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200/40 font-mono">
-                    {filteredMembers.length} Registered
+                    {filteredMembers.length} Đã đăng ký
                   </span>
                 </h3>
               </div>
@@ -472,7 +393,7 @@ export default function MembershipInformation({
                     type="text"
                     value={registrySearch}
                     onChange={(e) => setRegistrySearch(e.target.value)}
-                    placeholder="Search personnel..."
+                    placeholder="Tìm kiếm nhân sự..."
                     className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:border-emerald-500/80 outline-hidden text-slate-800 placeholder:text-slate-400"
                   />
                 </div>
@@ -487,36 +408,36 @@ export default function MembershipInformation({
                     className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-[#549B8C] hover:bg-[#437C70] rounded-lg transition-all cursor-pointer shadow-3xs"
                   >
                     <UserPlus className="h-3.5 w-3.5" />
-                    <span>Register</span>
+                    <span>Thêm thành viên</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     disabled
                     className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 border border-slate-200 rounded-lg cursor-not-allowed opacity-60"
-                    title="Clearance level-4 restricted"
+                    title="Bị hạn chế - Yêu cầu Quyền cấp độ 4"
                   >
                     <Lock className="h-3.5 w-3.5" />
-                    <span>Register</span>
+                    <span>Thêm thành viên</span>
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto text-left">
               {filteredMembers.length === 0 ? (
-                <div className="p-12 text-center text-slate-400 italic">No matches found.</div>
+                <div className="p-12 text-center text-slate-400 italic font-serif">Không tìm thấy thành viên nào phù hợp.</div>
               ) : (
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
                     <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase bg-slate-50/20">
-                      <th className="px-4 py-2.5">Full Name</th>
-                      <th className="px-4 py-2.5">DOB</th>
-                      <th className="px-4 py-2.5">Email Address</th>
-                      <th className="px-4 py-2.5">Phone number</th>
-                      <th className="px-4 py-2.5 text-center">Auth Level</th>
-                      <th className="px-4 py-2.5">Position</th>
-                      <th className="px-4 py-2.5 text-right">Action</th>
+                      <th className="px-4 py-2.5">Họ và Tên</th>
+                      <th className="px-4 py-2.5">Ngày sinh</th>
+                      <th className="px-4 py-2.5">Địa chỉ Email</th>
+                      <th className="px-4 py-2.5">Số điện thoại</th>
+                      <th className="px-4 py-2.5 text-center">Cấp độ</th>
+                      <th className="px-4 py-2.5">Chức vụ</th>
+                      <th className="px-4 py-2.5 text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -536,7 +457,7 @@ export default function MembershipInformation({
                             <div className="flex items-center gap-2">
                               <div className="w-6.5 h-6.5 rounded-full flex items-center justify-center font-bold text-[9px] bg-slate-150 text-slate-750 overflow-hidden shrink-0">
                                 {member.avatar ? (
-                                  <img src={member.avatar} className="w-full h-full object-cover" alt="" />
+                                  <img src={member.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                                 ) : (
                                   member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
                                 )}
@@ -551,7 +472,7 @@ export default function MembershipInformation({
                               <button
                                 type="button"
                                 onClick={() => handleCopy(member.email, `${member.id}-email`)}
-                                className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition"
+                                className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
                               >
                                 {copiedKey === `${member.id}-email` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                               </button>
@@ -564,7 +485,7 @@ export default function MembershipInformation({
                                 <button
                                   type="button"
                                   onClick={() => handleCopy(member.phone || '', `${member.id}-phone`)}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition"
+                                  className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
                                 >
                                   {copiedKey === `${member.id}-phone` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                                 </button>
@@ -573,7 +494,7 @@ export default function MembershipInformation({
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className={`inline-block px-1.5 py-0.5 rounded-full text-[8.5px] font-bold border uppercase ${levelClass}`}>
-                              {member.authorizedLevel || 'level 1'}
+                              {member.authorizedLevel || 'Cấp 1'}
                             </span>
                           </td>
                           <td className="px-4 py-3 font-semibold text-slate-600">{member.position}</td>
@@ -583,8 +504,8 @@ export default function MembershipInformation({
                                 <button
                                   type="button"
                                   onClick={() => startEdit(member)}
-                                  className="p-1.5 text-slate-500 hover:text-[#549B8C] hover:bg-emerald-50 rounded-lg transition-colors border border-transparent hover:border-emerald-100 cursor-pointer"
-                                  title="Update Personnel details"
+                                  className="p-1.5 text-slate-550 hover:text-[#549B8C] hover:bg-emerald-50 rounded-lg transition-colors border border-transparent hover:border-emerald-100 cursor-pointer"
+                                  title="Cập nhật Thông tin Thành viên"
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </button>
@@ -595,7 +516,7 @@ export default function MembershipInformation({
                                     type="button"
                                     disabled
                                     className="p-1.5 text-slate-300 bg-slate-50 border border-slate-100 rounded-lg cursor-not-allowed"
-                                    title="System Reserved Primary Account (Cannot delete)"
+                                    title="Tài khoản Hệ thống Dự phòng (Không thể xóa)"
                                   >
                                     <Lock className="h-4 w-4" />
                                   </button>
@@ -604,7 +525,7 @@ export default function MembershipInformation({
                                     type="button"
                                     onClick={() => setMemberToDelete(member)}
                                     className="p-1.5 text-slate-550 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100 cursor-pointer"
-                                    title="Delete Personnel record"
+                                    title="Xóa Thông tin Thành viên"
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </button>
@@ -640,20 +561,20 @@ export default function MembershipInformation({
       {activeSection === 'classrooms' && (
         <div className="w-full space-y-6 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-50/50">
+            <div className="px-5 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-50/50 text-left">
               <div>
                 <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-2">
-                  Training Academy Classroom Assets
+                  Hệ thống Phòng học & Khu thực hành
                   <span className="bg-[#549B8C]/15 text-[#549B8C] text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#549B8C]/30 font-mono">
-                    {CLASSROOMS.length} Facilities
+                    {CLASSROOMS.length} Cơ sở
                   </span>
                 </h3>
-                <p className="text-[10px] text-slate-400">Inventory of active simulated labs, classrooms, and practical yards</p>
+                <p className="text-[10px] text-slate-400">Danh sách các phòng thí nghiệm, phòng học mô phỏng và bãi thực hành đang hoạt động</p>
               </div>
             </div>
 
             {/* Grid of Classrooms */}
-            <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-left">
               {CLASSROOMS.map((room) => {
                 // Determine layout styles/facilities based on room id
                 let facilities: string[] = [];
@@ -661,23 +582,23 @@ export default function MembershipInformation({
                 let iconText = '🏢';
                 
                 if (room.id === 'room-101') {
-                  facilities = ['Safety Harnesses', 'High-Angle Rigging Platforms', 'HSE Audits Board', 'Audio System'];
+                  facilities = ['Dây đai An toàn', 'Giàn giáo Tiếp cận Trên cao', 'Bảng Quy chuẩn HSE', 'Hệ thống Âm thanh'];
                   colorTheme = 'emerald';
                   iconText = '🧪';
                 } else if (room.id === 'room-102') {
-                  facilities = ['Sensors Grid', 'Acoustics Barriers', 'Digital Interactive Whiteboard', 'Climate Simulator'];
+                  facilities = ['Mạng Cảm biến Rủi ro', 'Rào cản Tiếng ồn', 'Bảng trắng Tương tác Kỹ thuật số', 'Giả lập Điều kiện Khí hậu'];
                   colorTheme = 'indigo';
                   iconText = '🌡️';
                 } else if (room.id === 'room-ex') {
-                  facilities = ['Controlled Fire Igniters', 'Hydrant Network', 'Dry Powder Extinguishers', 'Gas Mask Rack'];
+                  facilities = ['Hệ thống Đánh lửa Thử nghiệm', 'Mạng lưới Họng nước cứu hỏa', 'Bình chữa cháy Bột khô', 'Kệ mặt nạ Phòng khí độc'];
                   colorTheme = 'rose';
                   iconText = '🔥';
                 } else if (room.id === 'room-conf') {
-                  facilities = ['Steel Entry Portals', 'O2 Gas Monitors', 'Retrieval Davit Arm & Winch', 'Emergency Lighting'];
+                  facilities = ['Cửa thép Kín khí Khẩn cấp', 'Thiết bị Đo Khí O2', 'Móc treo Davit & Winch', 'Hệ thống Đèn cứu nạn'];
                   colorTheme = 'amber';
                   iconText = '⚓';
                 } else {
-                  facilities = ['Soil & Liquid Spectrometers', 'Water Quality Analyzers', 'Digital Microscopes', 'Draft Shield Scales'];
+                  facilities = ['Máy đo quang phổ Đất & Chất lỏng', 'Phân tích Chất lượng Nước sạch', 'Kính hiển vi Kỹ thuật số', 'Cân phân tích Độ chia Nhỏ'];
                   colorTheme = 'teal';
                   iconText = '🌿';
                 }
@@ -695,21 +616,21 @@ export default function MembershipInformation({
                           colorTheme === 'teal' ? 'bg-teal-50 text-teal-700 border border-teal-200' :
                           'bg-emerald-50 text-emerald-700 border border-emerald-250'
                         }`}>
-                          {room.building.split(' ')[0]}
+                          {room.building}
                         </span>
                       </div>
 
                       <h4 className="text-xs font-extrabold text-slate-850 truncate">{room.name}</h4>
-                      <p className="text-[10px] text-slate-450 mt-0.5 flex items-center gap-1">
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300"></span>
-                        {room.building}
+                      <p className="text-[10px] text-slate-450 mt-0.5 flex items-center gap-1 flex-row">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300 shrink-0"></span>
+                        <span className="truncate">{room.building}</span>
                       </p>
 
                       <div className="mt-4 space-y-1.5">
-                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Facilities & Gear:</span>
+                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Trang thiết bị & Vật tư:</span>
                         <div className="flex flex-wrap gap-1">
                           {facilities.map((fac, idx) => (
-                            <span key={idx} className="bg-slate-50 border border-slate-150 text-slate-600 text-[9px] px-1.5 py-0.5 rounded font-medium">
+                            <span key={idx} className="bg-slate-55 border border-slate-150 text-slate-600 text-[9px] px-1.5 py-0.5 rounded font-medium">
                               {fac}
                             </span>
                           ))}
@@ -717,15 +638,15 @@ export default function MembershipInformation({
                       </div>
                     </div>
 
-                    <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                    <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between flex-row">
                       <div className="flex flex-col">
-                        <span className="text-[8px] text-slate-400 uppercase font-black">Capacity Limit</span>
-                        <span className="text-xs font-black text-slate-850 font-mono">{room.capacity} students</span>
+                        <span className="text-[8px] text-slate-400 uppercase font-black">Giới hạn Sức chứa</span>
+                        <span className="text-xs font-black text-slate-850 font-mono">{room.capacity} học viên</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50">
-                          Active Lab Asset
+                      <div className="flex items-center gap-1.5 flex-row">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                        <span className="text-[10px] text-emerald-850 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50">
+                          Phương tiện Hoạt động
                         </span>
                       </div>
                     </div>
@@ -756,21 +677,21 @@ export default function MembershipInformation({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden w-full max-w-md relative z-10"
+              className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden w-full max-w-md relative z-10 text-left"
             >
               {/* Modal Header */}
               <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/40 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <UserPlus className="h-4.5 w-4.5 text-slate-600" />
                   <h3 className="text-xs font-bold text-slate-950">
-                    {editingId ? 'Update Membership Entry' : 'Register New Member'}
+                    {editingId ? 'Cập nhật Thông tin Thành viên' : 'Đăng ký Thành viên Mới'}
                   </h3>
                 </div>
                 <button 
                   type="button"
                   onClick={cancelEdit}
                   className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                  title="Close Window"
+                  title="Đóng Cửa sổ"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -779,34 +700,34 @@ export default function MembershipInformation({
               {/* Form Content */}
               <form onSubmit={handleSubmit} className="p-5 space-y-4">
                 {editingId && (
-                  <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-center justify-between">
-                    <span className="font-semibold">Currently editing existing member</span>
+                  <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-center justify-between flex-row">
+                    <span className="font-semibold">Đang chỉnh sửa thành viên hiện hữu</span>
                     <button 
                       type="button" 
                       onClick={cancelEdit} 
-                      className="text-[10px] bg-white border border-amber-250 hover:bg-slate-50 px-2 py-0.5 rounded-md font-bold transition-colors"
+                      className="text-[10px] bg-white border border-amber-250 hover:bg-slate-50 px-2 py-0.5 rounded-md font-bold transition-colors cursor-pointer"
                     >
-                      Cancel
+                      Hủy bỏ
                     </button>
                   </div>
                 )}
 
                 {error && (
-                  <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-[11px] text-rose-700 flex items-start gap-2">
+                  <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-[11px] text-rose-700 flex items-start gap-2 text-left">
                     <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
                     <span>{error}</span>
                   </div>
                 )}
 
                 {success && (
-                  <div className="p-2.5 bg-emerald-50 border border-emerald-250 rounded-xl text-[11px] text-emerald-800 flex items-center gap-2">
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-250 rounded-xl text-[11px] text-emerald-800 flex items-center gap-2 text-left">
                     <UserCheck className="h-4 w-4 text-emerald-600" />
                     <span>{successMessage}</span>
                   </div>
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Full Name</label>
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Họ và Tên</label>
                   <div className="relative">
                     <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <input
@@ -814,7 +735,7 @@ export default function MembershipInformation({
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Nguyen Van A"
+                      placeholder="Nguyen Van A"
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 font-medium text-slate-900"
                     />
                   </div>
@@ -822,8 +743,8 @@ export default function MembershipInformation({
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block flex justify-between">
-                    <span>Date of Birth</span>
-                    <span className="text-emerald-700 font-mono italic text-[9px]">dd/mm/yyyy</span>
+                    <span>Ngày sinh</span>
+                    <span className="text-emerald-700 font-mono italic text-[9px]">ngày/tháng/năm</span>
                   </label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
@@ -832,14 +753,14 @@ export default function MembershipInformation({
                       required
                       value={dob}
                       onChange={(e) => setDob(e.target.value)}
-                      placeholder="e.g. 15/05/1990"
+                      placeholder="Ví dụ: 15/05/1990"
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all text-slate-700 font-mono"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">E-mail Address</label>
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Địa chỉ Email</label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <input
@@ -847,14 +768,14 @@ export default function MembershipInformation({
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="e.g. officer@center.com"
-                      className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 text-slate-950"
+                      placeholder="example@safetycentre.org"
+                      className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 text-slate-950 font-mono"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Phone Number</label>
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Số điện thoại</label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <input
@@ -862,7 +783,7 @@ export default function MembershipInformation({
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="e.g. +84 912 345 678"
+                      placeholder="0912 345 678"
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 font-mono text-slate-900"
                     />
                   </div>
@@ -870,9 +791,9 @@ export default function MembershipInformation({
 
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Access Password</label>
+                    <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Mật khẩu Truy cập</label>
                     {!(currentUserEmail.toLowerCase() === 'setcadmin' || currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org') && !(editingId && members.find(m => m.id === editingId)?.email.toLowerCase() === currentUserEmail.toLowerCase()) && (
-                      <span className="text-[9px] text-amber-600 font-bold italic bg-amber-50 px-1.5 py-0.5 rounded">Creator Admin / Owner Only</span>
+                      <span className="text-[9px] text-amber-600 font-bold italic bg-amber-50 px-1.5 py-0.5 rounded">Chỉ Admin hệ thống</span>
                     )}
                   </div>
                   <div className="relative">
@@ -882,85 +803,85 @@ export default function MembershipInformation({
                       disabled={!(currentUserEmail.toLowerCase() === 'setcadmin' || currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org') && !(editingId && members.find(m => m.id === editingId)?.email.toLowerCase() === currentUserEmail.toLowerCase())}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder={!(currentUserEmail.toLowerCase() === 'setcadmin' || currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org') && !(editingId && members.find(m => m.id === editingId)?.email.toLowerCase() === currentUserEmail.toLowerCase()) ? "••••••••" : "e.g. securePass123"}
-                      className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 font-mono text-slate-900 disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-100 disabled:cursor-not-allowed"
+                      placeholder={!(currentUserEmail.toLowerCase() === 'setcadmin' || currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org') && !(editingId && members.find(m => m.id === editingId)?.email.toLowerCase() === currentUserEmail.toLowerCase()) ? "••••••••" : "Nhập mật khẩu mới"}
+                      className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 font-mono text-slate-900 disabled:bg-slate-55 disabled:text-slate-400 disabled:border-slate-100 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Authorized Level</label>
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Cấp Trách nhiệm / Phân quyền</label>
                   <div className="relative">
-                    <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                     <select
                       value={authorizedLevel}
                       onChange={(e) => setAuthorizedLevel(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden bg-white text-slate-800 transition-all font-semibold cursor-pointer"
                     >
-                      <option value="level 1">Level 1</option>
-                      <option value="level 2">Level 2</option>
-                      <option value="level 3">Level 3</option>
-                      <option value="level 4">Level 4</option>
+                      <option value="level 1">Cấp độ 1 (Học viên)</option>
+                      <option value="level 2">Cấp độ 2 (Hành chính / Thư ký)</option>
+                      <option value="level 3">Cấp độ 3 (Giảng viên / Giám sát)</option>
+                      <option value="level 4">Cấp độ 4 (Phó Giám đốc / Giám đốc)</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Position / Role</label>
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">Chức vụ / Vai trò</label>
                   <div className="relative">
-                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                     <select
                       value={position}
                       required
                       onChange={(e) => setPosition(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden bg-white text-slate-800 transition-all cursor-pointer font-semibold"
                     >
-                      <option value="">Select a position...</option>
-                      <option value="Manager">Manager</option>
-                      <option value="Deputy Manager">Deputy Manager</option>
-                      <option value="Admin Team Leader">Admin Team Leader</option>
-                      <option value="Training Team Leader">Training Team Leader</option>
-                      <option value="Maintenance Team Leader">Maintenance Team Leader</option>
-                      <option value="Instructor">Instructor</option>
-                      <option value="Admin Staff">Admin Staff</option>
-                      <option value="Maintenance Staff">Maintenance Staff</option>
-                      <option value="Support Staff">Support Staff</option>
+                      <option value="">Chọn chức danh...</option>
+                      <option value="Quản lý">Quản lý</option>
+                      <option value="Phó Quản lý">Phó Quản lý</option>
+                      <option value="Trưởng nhóm Trực ban">Trưởng nhóm Trực ban</option>
+                      <option value="Trưởng nhóm Đào tạo">Trưởng nhóm Đào tạo</option>
+                      <option value="Trưởng nhóm Bảo trì">Trưởng nhóm Bảo trì</option>
+                      <option value="Giảng viên">Giảng viên</option>
+                      <option value="Nhân viên Hành chính">Nhân viên Hành chính</option>
+                      <option value="Nhân viên Bảo trì">Nhân viên Bảo trì</option>
+                      <option value="Nhân viên Hỗ trợ">Nhân viên Hỗ trợ</option>
                       {customPositions.map(pos => (
                         <option key={pos} value={pos}>{pos}</option>
                       ))}
-                      <option value="__custom__">+ Add Custom Position...</option>
+                      <option value="__custom__">+ Thêm Chức vụ Khác...</option>
                     </select>
                   </div>
                 </div>
 
                 {position === '__custom__' && (
                   <div className="space-y-1.5 animate-in fade-in duration-200">
-                    <label className="text-[9.5px] font-bold text-emerald-600 uppercase tracking-wider block">Custom Position</label>
+                    <label className="text-[9.5px] font-bold text-emerald-600 uppercase tracking-wider block">Chức vụ tự chọn</label>
                     <input
                       type="text"
                       required
                       value={customPosition}
                       onChange={(e) => setCustomPosition(e.target.value)}
-                      placeholder="e.g. Lead HSE Coordinator"
-                      className="w-full px-3 py-2 text-xs border border-emerald-250 rounded-xl focus:border-emerald-500 outline-hidden"
+                      placeholder="Ví dụ: Giám sát HSE Cấp cao"
+                      className="w-full px-3 py-2 text-xs border border-emerald-250 rounded-xl focus:border-emerald-500 outline-hidden text-slate-900"
                     />
                   </div>
                 )}
 
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 flex-row">
                   <button
                     type="button"
                     onClick={cancelEdit}
                     className="px-4 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all cursor-pointer"
                   >
-                    Cancel
+                    Hủy bỏ
                   </button>
                   <button
                     type="submit"
                     className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-[#549B8C] hover:bg-[#437C70] rounded-lg transition-all cursor-pointer"
                   >
                     <Sparkles className="h-3.5 w-3.5" />
-                    <span>{editingId ? 'Update' : 'Register'}</span>
+                    <span>{editingId ? 'Cập nhật' : 'Đăng ký'}</span>
                   </button>
                 </div>
               </form>
@@ -983,31 +904,31 @@ export default function MembershipInformation({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden w-full max-w-sm relative z-10"
+              className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden w-full max-w-sm relative z-10 text-left scale-100"
             >
               <div className="p-5 space-y-4">
-                <div className="flex gap-3 items-start">
+                <div className="flex gap-3 items-start text-left flex-row">
                   <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 shrink-0">
                     <AlertCircle className="h-5 w-5" />
                   </div>
                   <div className="space-y-1.5">
-                    <h3 className="text-xs font-extrabold text-slate-950 uppercase tracking-wider">Confirm Delete</h3>
-                    <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
-                      Are you sure you want to permanently delete and decommission the membership registry entry for <span className="font-extrabold text-slate-800">{memberToDelete.name}</span>?
+                    <h3 className="text-xs font-extrabold text-slate-950 uppercase tracking-wider">Xác nhận Xóa</h3>
+                    <p className="text-[11px] text-slate-550 leading-relaxed font-semibold">
+                      Bạn có chắc chắn muốn xóa vĩnh viễn và chấm dứt hồ sơ đăng ký thành viên của <span className="font-extrabold text-slate-800">{memberToDelete.name}</span> ra khỏi hệ thống?
                     </p>
-                    <p className="text-[10px] text-rose-600 bg-rose-50/55 border border-rose-100 p-2 rounded-lg font-semibold leading-tight">
-                      This action is irreversible and will revoke safety compliance registries.
+                    <p className="text-[10px] text-rose-650 bg-rose-50/55 border border-rose-100 p-2 rounded-lg font-semibold leading-tight">
+                      Hành động này không thể được thu hồi và các chứng chỉ an toàn đi kèm sẽ mất hiệu lực.
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-2.5 pt-2">
+                <div className="flex items-center justify-end gap-2.5 pt-2 flex-row">
                   <button
                     type="button"
                     onClick={() => setMemberToDelete(null)}
                     className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-850 bg-slate-55 hover:bg-slate-100 rounded-lg transition-all cursor-pointer font-sans"
                   >
-                    Cancel
+                    Hủy bỏ
                   </button>
                   <button
                     type="button"
@@ -1016,10 +937,10 @@ export default function MembershipInformation({
                       if (editingId === memberToDelete.id) cancelEdit();
                       setMemberToDelete(null);
                     }}
-                    className="px-5 py-2 text-xs font-black uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 font-sans border-none shadow-md shadow-rose-205 ring-2 ring-rose-500 ring-offset-2 animate-pulse hover:animate-none scale-102 hover:scale-105"
+                    className="px-5 py-2 text-xs font-black uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 font-sans border-none shadow-md"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    <span>Confirm Delete</span>
+                    <span>Xác nhận Xóa</span>
                   </button>
                 </div>
               </div>

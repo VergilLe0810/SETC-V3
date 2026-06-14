@@ -6,19 +6,19 @@
 import { Course, CourseSession, Classroom } from './types';
 
 export const CLASSROOMS: Classroom[] = [
-  { id: 'room-101', name: 'Main Safety Lab (Room 101)', capacity: 25, building: 'Block A (Safety HQ)' },
-  { id: 'room-102', name: 'Environmental Physics Room 102', capacity: 20, building: 'Block A (Safety HQ)' },
-  { id: 'room-ex', name: 'Practical Fire Simulation Ground', capacity: 30, building: 'Outdoor Yard' },
-  { id: 'room-conf', name: 'Industrial Mock Confined Tank Room', capacity: 15, building: 'Training Annex' },
-  { id: 'room-eco', name: 'Eco-System Analysis Lab B', capacity: 20, building: 'Block B (Eco Labs)' },
+  { id: 'room-101', name: 'Phòng thực hành An toàn Chính (Phòng 101)', capacity: 25, building: 'Nhà A (Trụ sở Đào tạo An toàn)' },
+  { id: 'room-102', name: 'Phòng Vật lý Môi trường 102', capacity: 20, building: 'Nhà A (Trụ sở Đào tạo An toàn)' },
+  { id: 'room-ex', name: 'Sân thực hành Diễn tập Phòng cháy Chữa cháy', capacity: 30, building: 'Khu vực Ngoài trời' },
+  { id: 'room-conf', name: 'Phòng mô phỏng Không gian hạn chế Công nghiệp', capacity: 15, building: 'Khu Phụ trợ Đào tạo' },
+  { id: 'room-eco', name: 'Phòng thí nghiệm Phân tích Hệ sinh thái B', capacity: 20, building: 'Nhà B (Khu Sinh thái)' },
 ];
 
 export const INSTRUCTORS: string[] = [
-  'Dr. Elena Rostova (Environmental Compliance Expert)',
-  'Chief James McCallister (Rescue Operations Officer)',
-  'Sarah Jenkins (OSHA Authorized Trainer)',
-  'David Vance (Chemical Hazards Analyst)',
-  'Marcus Aureli (Industrial Health Consultant)',
+  'TS. Elena Rostova (Chuyên gia Tuân thủ Môi trường)',
+  'Chỉ huy James McCallister (Cán bộ Hoạt động Cứu nạn)',
+  'Sarah Jenkins (Giảng viên Ủy quyền OSHA)',
+  'David Vance (Chuyên gia Phân tích Nguy cơ Hóa chất)',
+  'Marcus Aureli (Cố vấn Sức khỏe Nghề nghiệp)',
 ];
 
 export const INITIAL_COURSES: Course[] = [];

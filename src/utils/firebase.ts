@@ -1,10 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
   onAuthStateChanged, 
-  User,
   signOut 
 } from 'firebase/auth';
 import { 
@@ -22,7 +19,6 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRIT
 export const auth = getAuth(app);
 
 // Authentication Provider Setup
-const provider = new GoogleAuthProvider();
 
 // Log connection verification to Firestore to catch setup issues early
 async function testConnection() {
@@ -85,16 +81,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 // --- STANDARD EXPORTS ---
-export const signInWithGoogle = async (): Promise<User | null> => {
-  try {
-    const result = await signInWithPopup(auth, provider);
-    return result.user;
-  } catch (error) {
-    console.error('Google Auth Popup Error:', error);
-    throw error;
-  }
-};
-
 export const logoutUser = async (): Promise<void> => {
   try {
     await signOut(auth);

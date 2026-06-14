@@ -13,14 +13,14 @@ interface ProfileViewProps {
 export default function ProfileView({
   fullName = "SETC Creator Admin",
   dob = "1985-05-15",
-  position = "Director (Level 4)",
+  position = "Giám đốc (Cấp độ 4)",
   email = "setcadmin",
   responsibilities = [
-    "Training Curriculum Evaluation and Course Design coordination",
-    "On-site Safety Evaluation certifications and Task assignation",
-    "Training Center Membership registration, approvals, and credential indexing",
-    "Standard HSE incident prevention and Emergency Safety Drill coordination",
-    "Resource and classroom assignment planning to minimize training calendar collisions"
+    "Đánh giá và điều phối thiết kế khung chương trình đào tạo chuyên ngành",
+    "Phê duyệt chứng nhận đánh giá an toàn hiện trường & chỉ thị phân công nhiệm vụ",
+    "Quản lý hồ sơ đăng ký, duyệt thành viên trung tâm và số hóa chứng chỉ",
+    "Đảm bảo tiêu chuẩn phòng ngừa sự cố HSE & điều hành diễn tập an toàn khẩn cấp",
+    "Phân bổ tài nguyên thực hành, tối ưu hóa lớp học để tránh trùng lịch giảng dạy"
   ]
 }: ProfileViewProps) {
   // Format Date of Birth
@@ -43,7 +43,7 @@ export default function ProfileView({
               {position}
             </span>
           </div>
-          <p className="text-xs text-slate-500 font-medium">SETC Authorized Administrative Officer</p>
+          <p className="text-xs text-slate-500 font-medium">Cán bộ Hành chính được Ủy quyền PV College SETC</p>
         </div>
       </div>
 
@@ -51,7 +51,7 @@ export default function ProfileView({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Full Name */}
         <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 space-y-1.5">
-          <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Full Name</span>
+          <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Họ và Tên</span>
           <div className="flex items-center gap-2 text-slate-800">
             <User className="h-4 w-4 text-slate-450 shrink-0" />
             <span className="text-xs font-bold leading-normal">{fullName}</span>
@@ -60,7 +60,7 @@ export default function ProfileView({
 
         {/* Date of Birth */}
         <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 space-y-1.5">
-          <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Date of Birth</span>
+          <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Ngày sinh</span>
           <div className="flex items-center gap-2 text-slate-800">
             <Calendar className="h-4 w-4 text-slate-450 shrink-0" />
             <span className="text-xs font-bold leading-normal">{formattedDob}</span>
@@ -69,7 +69,7 @@ export default function ProfileView({
 
         {/* E-mail Contact */}
         <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 space-y-1.5">
-          <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Registered Email</span>
+          <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Email đã Đăng ký</span>
           <div className="flex items-center gap-2 text-slate-800">
             <Mail className="h-4 w-4 text-slate-450 shrink-0" />
             <span className="text-xs font-bold truncate leading-normal" title={email}>{email}</span>
@@ -81,7 +81,7 @@ export default function ProfileView({
       <div className="space-y-4">
         <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
           <Shield className="h-4 w-4 text-slate-650" />
-          <span>List of Authorized Responsibilities</span>
+          <span>Danh sách Trách nhiệm được Ủy quyền</span>
         </h3>
         
         <div className="bg-amber-50/35 border border-amber-200/50 rounded-xl p-4.5 space-y-3.5">

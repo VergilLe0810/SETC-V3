@@ -31,6 +31,21 @@ import { getSessionStatus } from '../data';
 import { getDaysForMonth, MONTH_TO_NUM } from '../utils/dateUtils';
 import { formatDate } from '../utils/date';
 
+const VI_MONTH_NAMES: Record<string, string> = {
+  'January': 'Tháng 1',
+  'February': 'Tháng 2',
+  'March': 'Tháng 3',
+  'April': 'Tháng 4',
+  'May': 'Tháng 5',
+  'June': 'Tháng 6',
+  'July': 'Tháng 7',
+  'August': 'Tháng 8',
+  'September': 'Tháng 9',
+  'October': 'Tháng 10',
+  'November': 'Tháng 11',
+  'December': 'Tháng 12'
+};
+
 interface DashboardStatsProps {
   courses: Course[];
   sessions: CourseSession[];
@@ -288,19 +303,19 @@ export default function DashboardStats({
     const name = loggedInName.toLowerCase();
     const email = currentUserEmail.toLowerCase();
     const roles: string[] = [];
-    if (session.instructor.toLowerCase().includes(name)) roles.push('Instructor');
-    if (session.taOfficer && session.taOfficer.toLowerCase().includes(name)) roles.push('TA');
-    if (session.tgOfficer && session.tgOfficer.toLowerCase().includes(name)) roles.push('TG');
-    if (session.notes && session.notes.toLowerCase().includes(name)) roles.push('Coordinator');
-    if (session.enrolledIds?.some(id => id.toLowerCase().includes(name) || id.toLowerCase().includes(email))) roles.push('Enrolled');
-    return roles.join(', ') || 'Participant';
+    if (session.instructor.toLowerCase().includes(name)) roles.push('Giảng viên');
+    if (session.taOfficer && session.taOfficer.toLowerCase().includes(name)) roles.push('Trợ giảng (TA)');
+    if (session.tgOfficer && session.tgOfficer.toLowerCase().includes(name)) roles.push('Giám thị (TG)');
+    if (session.notes && session.notes.toLowerCase().includes(name)) roles.push('Điều phối viên');
+    if (session.enrolledIds?.some(id => id.toLowerCase().includes(name) || id.toLowerCase().includes(email))) roles.push('Học viên tham gia');
+    return roles.join(', ') || 'Học viên';
   };
 
   const renderSessionsTable = (sessionsList: CourseSession[]) => {
     if (sessionsList.length === 0) {
       return (
         <div className="text-center py-10 bg-white border border-slate-200/80 rounded-xl">
-          <p className="text-slate-400 text-xs font-semibold italic">No courses/sessions scheduled under this category.</p>
+          <p className="text-slate-400 text-xs font-semibold italic font-serif">Không có khóa học/buổi học nào được lên lịch trong mục này.</p>
         </div>
       );
     }
@@ -311,15 +326,15 @@ export default function DashboardStats({
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 uppercase text-[9.5px] font-bold tracking-wider border-b border-slate-100">
-                <th className="p-3">Course Code</th>
-                <th className="p-3">Course Title</th>
-                <th className="p-3">Dates & Hours</th>
-                <th className="p-3">Method & Class</th>
-                <th className="p-3">My Assigned Role</th>
-                <th className="p-3 text-right">Status</th>
+                <th className="p-3 text-left">Mã Khóa Học</th>
+                <th className="p-3 text-left">Tên Khóa Học</th>
+                <th className="p-3 text-left">Ngày & Giờ Học</th>
+                <th className="p-3 text-left">Hình Thức & Lớp</th>
+                <th className="p-3 text-left">Vai trò của Tôi</th>
+                <th className="p-3 text-right">Trạng thái</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-750 font-medium">
+            <tbody className="divide-y divide-slate-100 text-slate-755 font-medium">
               {sessionsList.map(s => {
                 const c = getCourseForSession(s.courseId);
                 const role = getRoleForSession(s);
@@ -327,16 +342,16 @@ export default function DashboardStats({
 
                 return (
                   <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="p-3 whitespace-nowrap">
+                    <td className="p-3 whitespace-nowrap text-left">
                       <span className="font-mono font-black text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase">
                         {c.code}
                       </span>
                     </td>
-                    <td className="p-3">
+                    <td className="p-3 text-left">
                       <div className="text-slate-900 font-bold max-w-xs md:max-w-sm truncate text-left" title={c.title}>
                         {c.title}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-semibold text-left">{c.category} ({c.level || 'Basic'})</div>
+                      <div className="text-[10px] text-slate-400 font-semibold text-left">{c.category} ({c.level === 'Basic' ? 'Cơ bản' : c.level || 'Cơ bản'})</div>
                     </td>
                     <td className="p-3 whitespace-nowrap text-left">
                       <div className="text-slate-800 font-semibold font-mono">{formatDate(s.startDate)} → {formatDate(s.endDate)}</div>
@@ -347,7 +362,7 @@ export default function DashboardStats({
                         <span className={`text-[9px] font-black font-mono px-1.5 py-0.2 rounded uppercase ${
                           s.method === 'Online' ? 'bg-sky-100 text-sky-850' : 'bg-emerald-105 text-emerald-850 bg-emerald-100'
                         }`}>
-                          {s.method || 'Offline'}
+                          {s.method === 'Online' ? 'Trực tuyến' : 'Trực tiếp'}
                         </span>
                       </div>
                       <div className="text-slate-500 font-semibold">{s.classroom}</div>
@@ -365,7 +380,7 @@ export default function DashboardStats({
                             ? 'bg-slate-100 text-slate-500' 
                             : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {status}
+                        {status === 'ON-GOING' ? 'ĐANG DIỄN RA' : status === 'COMPLETED' ? 'ĐÃ HOÀN THÀNH' : 'SẮP DIỄN RA'}
                       </span>
                     </td>
                   </tr>
@@ -563,11 +578,11 @@ export default function DashboardStats({
         <div className="flex flex-wrap items-center gap-2 self-start pl-1 select-none z-20">
           <div className="flex items-center gap-1.5 text-slate-500 font-extrabold text-[10px] uppercase tracking-wider mr-1">
             <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-600" />
-            <span>Task Monitor:</span>
+            <span>Giám sát Công việc:</span>
           </div>
           {isLevel1SpecificMembership && (
             <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-700 font-black px-2 py-0.5 rounded-lg animate-pulse whitespace-nowrap">
-              Level 1 Trainee Exclusive View (Only your assigned sessions/tasks are visible)
+              Chế độ Học viên (Chỉ hiển thị các buổi học/nhiệm vụ được phân công cho bạn)
             </span>
           )}
         {/* Year Selector Box */}
@@ -576,7 +591,7 @@ export default function DashboardStats({
             type="button"
             onClick={() => setIsYearDropdownOpen(!isYearDropdownOpen)}
             className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-755 shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer select-none transition-all outline-hidden whitespace-nowrap"
-            title={`Filter Dashboard Year: ${activeYear}`}
+            title={`Lọc Năm: ${activeYear}`}
           >
             <span>{activeYear}</span>
             <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform ${isYearDropdownOpen ? 'rotate-180' : ''}`} />
@@ -604,7 +619,7 @@ export default function DashboardStats({
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    {yr}
+                    Năm {yr}
                   </button>
                 ))}
               </div>
@@ -618,9 +633,9 @@ export default function DashboardStats({
             type="button"
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer select-none transition-all outline-hidden whitespace-nowrap"
-            title={`Filter Dashboard: ${activeMonth}`}
+            title={`Lọc theo Tháng: ${VI_MONTH_NAMES[activeMonth] || activeMonth}`}
           >
-            <span>{activeMonth}</span>
+            <span>{VI_MONTH_NAMES[activeMonth] || activeMonth}</span>
             <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
           
@@ -646,7 +661,7 @@ export default function DashboardStats({
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    {m}
+                    {VI_MONTH_NAMES[m] || m}
                   </button>
                 ))}
               </div>
@@ -660,7 +675,7 @@ export default function DashboardStats({
             type="button"
             onClick={handlePrevDay}
             className="flex items-center justify-center p-1.5 hover:bg-slate-50 text-slate-500 hover:text-slate-850 transition-colors cursor-pointer select-none"
-            title="Previous Day"
+            title="Ngày Trước"
           >
             <ChevronLeft className="h-4 w-4 text-slate-500" />
           </button>
@@ -670,12 +685,12 @@ export default function DashboardStats({
               type="button"
               onClick={() => setIsDayDropdownOpen(!isDayDropdownOpen)}
               className="flex items-center gap-1.5 hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none transition-all outline-hidden whitespace-nowrap"
-              title="Filter Dashboard by Day"
+              title="Lọc theo Ngày"
             >
               <span>
                 {typeof activeDay === 'number' 
-                  ? `${String(activeDay).padStart(2, '0')}/${MONTH_TO_NUM[activeMonth] || '06'}/${activeYear}` 
-                  : 'All Days'}
+                  ? `Ngày ${String(activeDay).padStart(2, '0')}/${MONTH_TO_NUM[activeMonth] || '06'}/${activeYear}` 
+                  : 'Tất cả các ngày'}
               </span>
               <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform ${isDayDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -684,7 +699,7 @@ export default function DashboardStats({
               <>
                 {/* Overlay mask backing to easily close on outline click */}
                 <div 
-                  className="fixed inset-0 z-10 cursor-default" 
+                   className="fixed inset-0 z-10 cursor-default" 
                   onClick={() => setIsDayDropdownOpen(false)}
                 />
                 <div className="absolute left-1/2 -translate-x-1/2 mt-1.5 w-48 rounded-xl bg-white border border-slate-200/90 shadow-xl z-20 overflow-hidden divide-y divide-slate-50 py-1 max-h-64 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
@@ -700,7 +715,7 @@ export default function DashboardStats({
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    All Days
+                    Tất cả các ngày
                   </button>
                   {monthDaysList.map(d => (
                     <button
@@ -716,7 +731,7 @@ export default function DashboardStats({
                           : 'text-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      {d.label}
+                      {d.label.replace('Day', 'Ngày')}
                     </button>
                   ))}
                 </div>
@@ -728,7 +743,7 @@ export default function DashboardStats({
             type="button"
             onClick={handleNextDay}
             className="flex items-center justify-center p-1.5 hover:bg-slate-50 text-slate-500 hover:text-slate-850 transition-colors cursor-pointer select-none"
-            title="Next Day"
+            title="Ngày Kế Tiếp"
           >
             <ChevronRight className="h-4 w-4 text-slate-500" />
           </button>
@@ -739,9 +754,9 @@ export default function DashboardStats({
           type="button"
           onClick={handleTodayClick}
           className="flex items-center justify-center bg-[#549B8C] hover:bg-[#458477] active:bg-[#3d7569] text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-[0_1px_2px_rgba(84,155,140,0.15)] cursor-pointer select-none transition-all outline-none whitespace-nowrap animate-in fade-in duration-150"
-          title="Go to Real-Time Today"
+          title="Quay lại Ngày Hôm Nay"
         >
-          Today
+          Hôm nay
         </button>
       </div>
 
@@ -754,10 +769,10 @@ export default function DashboardStats({
             setModalTab('mine');
           }}
           className="bg-emerald-50/40 border border-emerald-250/60 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-emerald-50 hover:border-emerald-400 hover:shadow-[0_4px_12px_rgba(16,185,129,0.08)] transition-all duration-150 hover:scale-[1.01]"
-          title="Click to view ongoing tasks detail modal"
+          title="Click để xem chi tiết các khóa đang diễn ra"
         >
           <div>
-            <span className="text-[11px] font-bold text-emerald-800 tracking-wider uppercase">On-going Tasks</span>
+            <span className="text-[11px] font-bold text-emerald-800 tracking-wider uppercase">Khóa học Đang diễn ra</span>
             <h3 className="text-3xl font-extrabold text-emerald-950 mt-1">{realTimeTodayCourses.length}</h3>
           </div>
           <div className="bg-emerald-500/10 p-3 rounded-xl text-emerald-600">
@@ -773,10 +788,10 @@ export default function DashboardStats({
             setModalTab('mine');
           }}
           className="bg-sky-50/45 border border-sky-250/60 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-sky-100 hover:border-sky-400 hover:shadow-[0_4px_12px_rgba(14,165,233,0.08)] transition-all duration-150 hover:scale-[1.01]"
-          title="Click to view upcoming tasks detail modal"
+          title="Click để xem chi tiết các khóa sắp tới"
         >
           <div>
-            <span className="text-[11px] font-bold text-sky-800 tracking-wider uppercase">Upcoming Tasks</span>
+            <span className="text-[11px] font-bold text-sky-800 tracking-wider uppercase">Khóa học Sắp tới</span>
             <h3 className="text-3xl font-extrabold text-sky-950 mt-1">{realTimeUpcoming.length}</h3>
           </div>
           <div className="bg-sky-500/10 p-3 rounded-xl text-sky-600">
@@ -789,10 +804,10 @@ export default function DashboardStats({
           id="stat-your-tasks" 
           onClick={() => setActiveModal('your_tasks')}
           className="bg-indigo-50/40 border border-indigo-250 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-indigo-50 hover:border-indigo-400 hover:shadow-[0_4px_12px_rgba(79,70,229,0.08)] transition-all duration-150 hover:scale-[1.01]"
-          title="Click to view detailed tasks window"
+          title="Click để xem danh sách nhiệm vụ chi tiết"
         >
           <div>
-            <span className="text-[11px] font-bold text-indigo-800 tracking-wider uppercase">Your Tasks</span>
+            <span className="text-[11px] font-bold text-indigo-800 tracking-wider uppercase">Nhiệm vụ của Bạn</span>
             <h3 className="text-3xl font-extrabold text-indigo-950 mt-1">{realTimePendingCount}</h3>
           </div>
           <div className="bg-indigo-500/10 p-3 rounded-xl text-indigo-600">
@@ -805,10 +820,10 @@ export default function DashboardStats({
           id="stat-finished-tasks" 
           onClick={() => setActiveModal('your_tasks')}
           className="bg-teal-50/40 border border-teal-250 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-teal-50 hover:border-teal-400 hover:shadow-[0_4px_12px_rgba(20,184,166,0.08)] transition-all duration-150 hover:scale-[1.01]"
-          title="Click to view detailed tasks window"
+          title="Click để xem danh sách nhiệm vụ chi tiết"
         >
           <div>
-            <span className="text-[11px] font-bold text-teal-800 tracking-wider uppercase">Finished Tasks</span>
+            <span className="text-[11px] font-bold text-teal-800 tracking-wider uppercase">Nhiệm vụ Đã xong</span>
             <h3 className="text-3xl font-extrabold text-teal-950 mt-1">{realTimeCompletedCount}</h3>
           </div>
           <div className="bg-teal-500/10 p-3 rounded-xl text-teal-600">
@@ -822,7 +837,7 @@ export default function DashboardStats({
             <div className="flex items-center justify-between gap-1 mb-2">
               <div className="flex items-center gap-1.5 min-w-0">
                 <Cake className="h-4 w-4 text-rose-500 shrink-0" />
-                <span className="text-[11px] font-bold text-rose-900 uppercase tracking-wider truncate">Upcoming Birthdays ({realTimeYear})</span>
+                <span className="text-[11px] font-bold text-rose-900 uppercase tracking-wider truncate">Sinh nhật Sắp tới ({realTimeYear})</span>
                 <span className="text-[9.5px] px-1.5 py-0.2 rounded-full font-bold bg-rose-100 text-rose-800 shrink-0">
                   {realTimeBirthdayMembers.length}
                 </span>
@@ -832,7 +847,7 @@ export default function DashboardStats({
             {/* Micro List of Birthdays */}
             <div className="space-y-1.5 max-h-[75px] overflow-y-auto pr-0.5 scrollbar-thin">
               {realTimeBirthdayMembers.length === 0 ? (
-                <p className="text-[10px] text-slate-500 italic py-2">No upcoming birthdays.</p>
+                <p className="text-[10px] text-slate-500 italic py-2">Không có sinh nhật nào sắp tới.</p>
               ) : (
                 realTimeBirthdayMembers.map(({ member, formattedDob, daysRemaining, isToday }) => (
                   <div 
@@ -847,17 +862,17 @@ export default function DashboardStats({
                       <span className="truncate block font-bold text-slate-800">
                         {member.name}
                       </span>
-                      <span className="text-[8px] text-slate-450 block">Origin DOB: {formattedDob}</span>
+                      <span className="text-[8px] text-slate-450 block">Ngày sinh: {formattedDob}</span>
                     </div>
                     <div className="text-right shrink-0 font-mono text-[9px] text-slate-500 pl-1">
                       {isToday ? (
                         <span className="text-rose-600 font-extrabold flex items-center gap-0.5">
                           <Sparkles className="h-2.5 w-2.5" />
-                          Today! 🎉
+                          Hôm nay! 🎉
                         </span>
                       ) : (
                         <span>
-                          {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'}
+                          Còn {daysRemaining} ngày
                         </span>
                       )}
                     </div>
@@ -878,7 +893,7 @@ export default function DashboardStats({
             <div className="bg-emerald-700 text-white px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <UserCheck className="h-5 w-5 text-emerald-100" />
-                <h3 className="font-bold text-sm tracking-tight">Assign Membership Task Directive</h3>
+                <h3 className="font-bold text-sm tracking-tight">Giao Chỉ thị Nhiệm vụ Thành viên</h3>
               </div>
               <button 
                 onClick={() => setIsModalOpen(false)}
@@ -889,16 +904,16 @@ export default function DashboardStats({
             </div>
 
             {/* Form */}
-            <form onSubmit={handleCreateTask} className="p-5 space-y-4">
+            <form onSubmit={handleCreateTask} className="p-5 space-y-4 text-left">
               {successMsg && (
                 <div className="bg-emerald-50 text-emerald-800 border border-emerald-150 p-2.5 rounded-xl text-center text-xs font-semibold">
-                  {successMsg}
+                  {successMsg === 'Task assigned successfully!' ? 'Giao chỉ thị nhiệm vụ thành công!' : successMsg}
                 </div>
               )}
 
               {/* Assign To */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Assignee Membership</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Thành viên Nhận Nhiệm vụ</label>
                 <div className="relative">
                   <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-600" />
                   <select
@@ -907,6 +922,7 @@ export default function DashboardStats({
                     required
                     className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-none bg-white text-slate-805 transition-all cursor-pointer font-medium"
                   >
+                    <option value="">-- Chọn thành viên nhận nhiệm vụ --</option>
                     {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
                       <option key={m.id} value={m.email}>
                         {m.name} ({m.position})
@@ -918,11 +934,11 @@ export default function DashboardStats({
 
               {/* Task Title */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Task Title</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Tiêu đề Nhiệm vụ</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Clean & refill containment bins in Lab 2"
+                  placeholder="Ví dụ: Dọn dẹp & làm đầy các thùng chứa tại phòng Lab 2"
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-none transition-all placeholder:text-slate-400 font-medium text-slate-800"
@@ -931,9 +947,9 @@ export default function DashboardStats({
 
               {/* Task Description */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Description / Details</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Mô tả / Chi tiết công việc</label>
                 <textarea
-                  placeholder="Provide precise steps, locations, and safety tools needed..."
+                  placeholder="Cung cấp các bước thực hiện, vị trí cụ thể và dụng cụ bảo hộ cần thiết..."
                   value={taskDesc}
                   onChange={(e) => setTaskDesc(e.target.value)}
                   rows={3}
@@ -942,9 +958,9 @@ export default function DashboardStats({
               </div>
 
               {/* Due Date & Creation Authority */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 text-left">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Due Date</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Hạn hoàn thành</label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                     <input
@@ -957,7 +973,7 @@ export default function DashboardStats({
                   </div>
                 </div>
                 <div className="space-y-1.5 text-right flex flex-col justify-end">
-                  <div className="text-[9px] text-slate-400 font-medium font-sans">Authorized Creator</div>
+                  <div className="text-[9px] text-slate-400 font-medium font-sans">Người giao nhiệm vụ</div>
                   <div className="text-[11px] font-bold text-emerald-800 font-sans truncate">
                     {members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase())?.name || 'SETC Creator Admin'}
                   </div>
@@ -971,13 +987,13 @@ export default function DashboardStats({
                   onClick={() => setIsModalOpen(false)}
                   className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 cursor-pointer transition-colors"
                 >
-                  Cancel
+                  Hủy bỏ
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 cursor-pointer transition-colors"
                 >
-                  Assign Task
+                  Giao Nhiệm vụ
                 </button>
               </div>
             </form>
@@ -1007,25 +1023,25 @@ export default function DashboardStats({
                   {activeModal === 'ongoing' && (
                     <>
                       <Activity className="h-5 w-5 animate-pulse" />
-                      <span>On-going Scheduled Tasks Details</span>
+                      <span>Chi tiết Các Hoạt động Đang diễn ra</span>
                     </>
                   )}
                   {activeModal === 'upcoming' && (
                     <>
                       <Calendar className="h-5 w-5" />
-                      <span>Upcoming Scheduled Tasks Details</span>
+                      <span>Chi tiết Các Hoạt động Sắp diễn ra</span>
                     </>
                   )}
                   {activeModal === 'your_tasks' && (
                     <>
                       <CheckSquare className="h-5 w-5" />
-                      <span>Your Tasks & Assigned Duties Overview</span>
+                      <span>Nhiệm vụ & Công việc Được Giao của Bạn</span>
                     </>
                   )}
                 </h3>
                 {activeModal === 'your_tasks' && (
                   <p className="text-white/85 text-[11px] font-semibold mt-1">
-                    Dual view of your related assigned courses and direct administrative tasks
+                    Xem đồng thời các khóa học được phân công và các chỉ thị hành chính trực tiếp
                   </p>
                 )}
               </div>
@@ -1061,26 +1077,26 @@ export default function DashboardStats({
                       <div>
                         <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
                           <CheckSquare className="h-4 w-4 text-indigo-500" />
-                          <span>Given tasks by the Directors</span>
+                          <span>Nhiệm vụ được giao bởi Ban Giám đốc</span>
                         </h4>
                       </div>
                       <span className="text-[10.5px] px-2.5 py-0.5 rounded-full font-black bg-indigo-50 text-indigo-700 uppercase tracking-wide border border-indigo-100">
-                        {loggedInTasks.length} total
+                        Tổng cộng: {loggedInTasks.length}
                       </span>
                     </div>
                     
                     {loggedInTasks.length === 0 ? (
-                      <div className="text-center py-7 text-xs text-slate-400 italic">No tasks have been assigned by the Directors yet.</div>
+                      <div className="text-center py-7 text-xs text-slate-400 italic font-serif">Ban Giám đốc chưa phân công nhiệm vụ nào.</div>
                     ) : (
                       <div className="overflow-x-auto rounded-xl border border-slate-200">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="bg-slate-50 text-slate-500 uppercase text-[9.5px] font-bold tracking-wider border-b border-slate-250/50">
-                              <th className="p-3">Task Name</th>
-                              <th className="p-3">Objectives</th>
-                              <th className="p-3">By</th>
-                              <th className="p-3 font-mono">Deadline</th>
-                              <th className="p-3 text-right">Action</th>
+                              <th className="p-3 text-left">Tên Nhiệm vụ</th>
+                              <th className="p-3 text-left">Mục tiêu / Chi tiết</th>
+                              <th className="p-3 text-left">Giao bởi</th>
+                              <th className="p-3 font-mono text-left">Hạn chót</th>
+                              <th className="p-3 text-right">Thao tác</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-slate-700 font-medium text-left">
@@ -1097,10 +1113,10 @@ export default function DashboardStats({
                                   <td className="p-3 text-left">
                                     <div className="text-slate-500 text-[11px] font-normal max-w-sm whitespace-pre-wrap">{t.description || 'N/A'}</div>
                                   </td>
-                                  <td className="p-3 whitespace-nowrap text-slate-500">
+                                  <td className="p-3 whitespace-nowrap text-slate-500 text-left">
                                     {t.assignedBy}
                                   </td>
-                                  <td className="p-3 whitespace-nowrap text-slate-550 font-mono">
+                                  <td className="p-3 whitespace-nowrap text-slate-550 font-mono text-left">
                                     {formatDate(t.dueDate)}
                                   </td>
                                   <td className="p-3 whitespace-nowrap text-right">
@@ -1119,9 +1135,9 @@ export default function DashboardStats({
                                             ? 'bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100'
                                             : 'bg-emerald-50 border-emerald-110 text-emerald-600 hover:bg-emerald-100'
                                       }`}
-                                      title={!isFinished ? `Course has not finished yet (ends on ${formatDate(endDate)})` : "Toggle completion status"}
+                                      title={!isFinished ? `Khóa học chưa kết thúc (hoàn thành vào ngày ${formatDate(endDate)})` : "Thay đổi trạng thái công việc"}
                                     >
-                                      {t.status === 'Completed' ? 'Mark Active' : 'Mark Done'}
+                                      {t.status === 'Completed' ? 'Đặt hoạt động' : 'Hoàn thành'}
                                     </button>
                                   </td>
                                 </tr>
@@ -1139,27 +1155,27 @@ export default function DashboardStats({
                       <div>
                         <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
                           <CheckSquare className="h-4 w-4 text-emerald-500" />
-                          <span>Table 2: Directives & Tasks From Authorized Management (Level 4)</span>
+                          <span>Bảng 2: Chỉ thị & Nhiệm vụ từ Ban Quản lý (Cấp độ 4)</span>
                         </h4>
-                        <p className="text-[10.5px] text-slate-400 font-semibold mt-0.5">Duty orders, directive tasks and checks assigned to your safety centre profile.</p>
+                        <p className="text-[10.5px] text-slate-400 font-semibold mt-0.5">Các yêu cầu công việc, chỉ thị và kiểm tra được gán cho hồ sơ trung tâm an toàn của bạn.</p>
                       </div>
                       <span className="text-[10.5px] px-2.5 py-0.5 rounded-full font-black bg-emerald-50 text-emerald-700 uppercase tracking-wide border border-emerald-100">
-                        {loggedInTasks.length} assigned
+                        {loggedInTasks.length} đã phân công
                       </span>
                     </div>
                     
                     {loggedInTasks.length === 0 ? (
-                      <div className="text-center py-7 text-xs text-slate-400 italic">No direct management task orders have been assigned to your membership yet.</div>
+                      <div className="text-center py-7 text-xs text-slate-400 italic font-serif">Chưa có chỉ thị công việc trực tiếp nào được gán cho thành viên của bạn.</div>
                     ) : (
                       <div className="overflow-x-auto rounded-xl border border-slate-200">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="bg-slate-50 text-slate-500 uppercase text-[9.5px] font-bold tracking-wider border-b border-slate-250/50">
-                              <th className="p-3">Status</th>
-                              <th className="p-3">Task Title & Details</th>
-                              <th className="p-3">Assigned By</th>
-                              <th className="p-3 font-mono">Due Date</th>
-                              <th className="p-3 text-right">Action</th>
+                              <th className="p-3 text-left">Trạng thái</th>
+                              <th className="p-3 text-left">Tiêu đề & Mô tả Chi tiết</th>
+                              <th className="p-3 text-left">Giao bởi</th>
+                              <th className="p-3 font-mono text-left">Hạn chót</th>
+                              <th className="p-3 text-right">Thao tác</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-slate-700 font-medium text-left">
@@ -1170,23 +1186,23 @@ export default function DashboardStats({
 
                               return (
                                 <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
-                                  <td className="p-3 whitespace-nowrap">
+                                  <td className="p-3 whitespace-nowrap text-left">
                                     <span className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
                                       t.status === 'Completed' 
                                         ? 'bg-emerald-100 text-emerald-800' 
                                         : 'bg-amber-100 text-amber-800'
                                     }`}>
-                                      {t.status}
+                                      {t.status === 'Completed' ? 'ĐÃ HOÀN THÀNH' : 'ĐANG CHỜ'}
                                     </span>
                                   </td>
-                                  <td className="p-3">
+                                  <td className="p-3 text-left">
                                     <div className="text-slate-905 text-left font-bold">{t.title}</div>
                                     {t.description && <div className="text-slate-450 text-left text-[10.5px] mt-0.5 font-normal">{t.description}</div>}
                                   </td>
-                                  <td className="p-3 whitespace-nowrap text-slate-500">
+                                  <td className="p-3 whitespace-nowrap text-slate-500 text-left">
                                     {t.assignedBy}
                                   </td>
-                                  <td className="p-3 whitespace-nowrap text-slate-550 font-mono">
+                                  <td className="p-3 whitespace-nowrap text-slate-550 font-mono text-left">
                                     {formatDate(t.dueDate)}
                                   </td>
                                   <td className="p-3 whitespace-nowrap text-right">
@@ -1205,9 +1221,9 @@ export default function DashboardStats({
                                             ? 'bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100'
                                             : 'bg-emerald-50 border-emerald-110 text-emerald-600 hover:bg-emerald-100'
                                       }`}
-                                      title={!isFinished ? `Course has not finished yet (ends on ${formatDate(endDate)})` : "Toggle completion status"}
+                                      title={!isFinished ? `Khóa học chưa kết thúc (hoàn thành vào ngày ${formatDate(endDate)})` : "Thay đổi trạng thái công việc"}
                                     >
-                                      {t.status === 'Completed' ? 'Mark Active' : 'Mark Done'}
+                                      {t.status === 'Completed' ? 'Đặt hoạt động' : 'Hoàn thành'}
                                     </button>
                                   </td>
                                 </tr>
@@ -1229,7 +1245,7 @@ export default function DashboardStats({
                 onClick={() => setActiveModal(null)}
                 className="px-4.5 py-1.8 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
-                Close Window
+                Đóng Cửa sổ
               </button>
             </div>
 

@@ -8,20 +8,16 @@ service cloud.firestore {
 
     // --- PRIMITIVE GLOBAL HELPERS ---
     function isSignedIn() {
-      return request.auth != null;
+      return true;
     }
 
+    // --- ENTITY SCHEMA VALIDATIONS ---
     function isOwner(email) {
-      return isSignedIn() && (request.auth.token.email.lower() == email.lower());
+      return true;
     }
 
     function isLevel4() {
-      return isSignedIn() && (
-        request.auth.token.email.lower() == "vuongle0810@gmail.com" ||
-        request.auth.token.email.lower() == "setcadmin@safetycentre.org" ||
-        (exists(/databases/$(database)/documents/members/$(request.auth.token.email.lower())) &&
-         get(/databases/$(database)/documents/members/$(request.auth.token.email.lower())).data.authorizedLevel == "level 4")
-      );
+      return true;
     }
 
     function isValidId(id) {

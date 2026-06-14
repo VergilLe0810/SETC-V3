@@ -41,9 +41,8 @@ import LoginPage from './components/LoginPage';
 import logoImg from './assets/images/regenerated_image_1780583890425.jpg';
 
 // Firebase imports
-import { db, auth, signInWithGoogle, logoutUser, OperationType, handleFirestoreError } from './utils/firebase';
+import { db, auth, logoutUser, OperationType, handleFirestoreError } from './utils/firebase';
 import { collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
 const DEFAULT_TASKS: Task[] = [];
 
@@ -67,14 +66,6 @@ export default function App() {
   });
 
   const handleLogin = async (email: string) => {
-    // Standard credential login - sign in anonymously to satisfy security rules on Firestore
-    if (!auth.currentUser) {
-      try {
-        await signInAnonymously(auth);
-      } catch (err) {
-        console.error("Anonymous authentication fallback failed:", err);
-      }
-    }
     setUserEmail(email);
     setIsLoggedIn(true);
     localStorage.setItem('se_user_email', email);
@@ -90,34 +81,6 @@ export default function App() {
     }
     setIsLoggedIn(false);
     sessionStorage.setItem('se_is_logged_in', 'false');
-  };
-
-  const handleGoogleSignIn = async () => {
-    try {
-      const user = await signInWithGoogle();
-      if (user) {
-        const email = user.email ? user.email.toLowerCase() : '';
-        const emailKey = email;
-        const defaultMember: Member = {
-          id: `mem-${Date.now()}`,
-          name: user.displayName || email.split('@')[0],
-          dob: '1990-01-01',
-          position: email === 'vuongle0810@gmail.com' ? 'Lead System Developer' : 'Specialist',
-          email: email,
-          createdAt: new Date().toISOString(),
-          authorizedLevel: email === 'vuongle0810@gmail.com' ? 'level 4' : 'level 1',
-          phone: user.phoneNumber || undefined
-        };
-
-        const ref = doc(db, 'members', emailKey);
-        await setDoc(ref, defaultMember, { merge: true });
-
-        await handleLogin(email);
-      }
-    } catch (error) {
-      console.error("Google Sign-In flow error:", error);
-      throw error;
-    }
   };
 
   const [showProfileTab, setShowProfileTab] = useState<boolean>(() => {
@@ -151,21 +114,6 @@ export default function App() {
     }
     return 'all';
   });
-
-  // Observe Firebase Auth state
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const email = firebaseUser.email?.toLowerCase() || '';
-        setUserEmail(email);
-        setIsLoggedIn(true);
-        localStorage.setItem('se_user_email', email);
-        localStorage.setItem('se_latest_login_email', email);
-        sessionStorage.setItem('se_is_logged_in', 'true');
-      }
-    });
-    return () => unsubscribeAuth();
-  }, []);
 
   // Observe collections in real-time
   useEffect(() => {
@@ -205,7 +153,26 @@ export default function App() {
         setDoc(doc(db, "members", "setcadmin"), defaultCreator);
         setDoc(doc(db, "members", "vuongle0810@gmail.com"), defaultDeveloper);
       } else {
-        setMembers(list);
+        const uniqueList: Member[] = [];
+        const seenIds = new Set<string>();
+        list.forEach((m) => {
+          let uniqueId = m.id;
+          if (!uniqueId) {
+            uniqueId = `mem-fallback-${m.email.replace(/[@.]/g, '_')}`;
+          }
+          if (seenIds.has(uniqueId)) {
+            uniqueId = `${uniqueId}-${m.email.replace(/[@.]/g, '_')}`;
+          }
+          let counter = 1;
+          let candidateId = uniqueId;
+          while (seenIds.has(candidateId)) {
+            candidateId = `${uniqueId}-${counter}`;
+            counter++;
+          }
+          seenIds.add(candidateId);
+          uniqueList.push({ ...m, id: candidateId });
+        });
+        setMembers(uniqueList);
       }
     }, (error) => {
       console.error("Members real-time snapshot subscription failed:", error);
@@ -875,8 +842,13 @@ export default function App() {
 
   // Update member in registry
   const handleUpdateMember = async (updatedMember: Member) => {
+    const oldMember = members.find(m => m.id === updatedMember.id);
+    const oldEmailKey = oldMember ? oldMember.email.trim().toLowerCase() : '';
     const emailKey = updatedMember.email.trim().toLowerCase();
     try {
+      if (oldEmailKey && oldEmailKey !== emailKey) {
+        await deleteDoc(doc(db, "members", oldEmailKey));
+      }
       await setDoc(doc(db, "members", emailKey), updatedMember);
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `members/${emailKey}`);
@@ -978,7 +950,6 @@ export default function App() {
     return (
       <LoginPage 
         onLogin={handleLogin} 
-        onGoogleSignIn={handleGoogleSignIn}
         members={members} 
         logoSrc={logoImg} 
       />

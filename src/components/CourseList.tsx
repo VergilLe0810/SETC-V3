@@ -128,18 +128,18 @@ export default function CourseList({
 
     // Permission check
     if (!hasLevel4Access) {
-      setError('You must have Auth Level 4 Clearance to register or update training courses.');
+      setError('Bạn phải có Quyền hạn Xác thực Cấp độ 4 để đăng ký hoặc cập nhật khóa học.');
       return;
     }
 
     // Validation
     if (!code.trim() || !title.trim()) {
-      setError('Course ID and Course Name are required.');
+      setError('Mã khóa học và Tên khóa học là bắt buộc.');
       return;
     }
 
     if (durationDays <= 0) {
-      setError('Duration in days must be a positive integer.');
+      setError('Thời lượng tính bằng ngày phải là số nguyên dương.');
       return;
     }
 
@@ -167,7 +167,7 @@ export default function CourseList({
       };
 
       onUpdateCourse(updatedCourse);
-      setSuccessMessage(`Successfully updated course ${updatedCourse.code} in catalog.`);
+      setSuccessMessage(`Đã cập nhật thành công khóa học ${updatedCourse.code} trong danh mục.`);
       setSuccess(true);
       cancelEdit();
       setIsAddModalOpen(false);
@@ -175,7 +175,7 @@ export default function CourseList({
       // Check duplicate code
       const isDuplicate = courses.some(c => c.code.toLowerCase() === code.trim().toLowerCase());
       if (isDuplicate) {
-        setError(`A course program with program code "${code.trim().toUpperCase()}" is already registered.`);
+        setError(`Chương trình đào tạo có mã "${code.trim().toUpperCase()}" đã được đăng ký rồi.`);
         return;
       }
 
@@ -193,12 +193,12 @@ export default function CourseList({
         quizQuestions: [
           {
             id: `q-${Date.now()}-1`,
-            question: `What is the primary objective of the ${code.trim().toUpperCase()} training program?`,
+            question: `Mục tiêu chính của chương trình đào tạo ${code.trim().toUpperCase()} là gì?`,
             options: [
-              'Ensuring full regulatory compliance and operational safety standardizations',
-              'Speeding up facility delivery ignoring checklists',
-              'Decreasing safety budgets to baseline levels',
-              'None of the above'
+              'Đảm bảo tuân thủ đầy đủ các quy định và tiêu chuẩn hóa an toàn vận hành',
+              'Tăng tốc độ bàn giao thiết bị đồng thời bỏ qua các danh sách kiểm tra',
+              'Giảm ngân sách an toàn xuống mức tối thiểu',
+              'Không có phương án nào đúng'
             ],
             correctAnswerIndex: 0
           }
@@ -206,7 +206,7 @@ export default function CourseList({
       };
 
       onAddCourse(newCourse);
-      setSuccessMessage(`Successfully registered ${newCourse.code} program into database.`);
+      setSuccessMessage(`Đã đăng ký thành công chương trình ${newCourse.code} vào cơ sở dữ liệu.`);
       setSuccess(true);
       cancelEdit();
       setIsAddModalOpen(false);
@@ -257,7 +257,7 @@ export default function CourseList({
     if (domainCourses.length === 0) {
       return (
         <div id={`empty-state-${domainName.replace('/', '-').toLowerCase()}`} className="py-6 px-4 bg-slate-50/50 border border-slate-200 border-dashed rounded-xl text-center">
-          <p className="text-[11px] text-slate-400 font-medium italic">No courses registered matching your filters.</p>
+          <p className="text-[11px] text-slate-400 font-medium italic font-serif">Không có khóa học nào được đăng ký khớp với bộ lọc của bạn.</p>
         </div>
       );
     }
@@ -267,10 +267,10 @@ export default function CourseList({
         <table className="w-full text-left border-collapse table-auto">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-[9.5px] font-black uppercase text-slate-500 tracking-wider font-mono">
-              <th className="px-4 py-2.5 w-[20%]">Course ID</th>
-              <th className="px-4 py-2.5 w-[50%]">Course Name</th>
-              <th className="px-4 py-2.5 w-[15%] text-center">Duration</th>
-              <th className="px-4 py-2.5 text-center w-[15%]">Action</th>
+              <th className="px-4 py-2.5 w-[20%] text-left">Mã Khóa học</th>
+              <th className="px-4 py-2.5 w-[50%] text-left">Tên Khóa học</th>
+              <th className="px-4 py-2.5 w-[15%] text-center">Thời lượng</th>
+              <th className="px-4 py-2.5 text-center w-[15%]">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-150 font-sans text-xs">
@@ -286,20 +286,20 @@ export default function CourseList({
                   }`}
                 >
                   {/* 1. Course ID */}
-                  <td className="px-4 py-3.5 font-bold text-sky-900 tracking-wide font-mono">
+                  <td className="px-4 py-3.5 font-bold text-sky-900 tracking-wide text-left font-mono">
                     {c.code}
                   </td>
 
                   {/* 2. Course Name */}
-                  <td className="px-4 py-3.5 font-bold text-slate-900 leading-snug">
+                  <td className="px-4 py-3.5 font-bold text-slate-900 leading-snug text-left">
                     {c.title}
                   </td>
 
                   {/* 3. Duration */}
                   <td className="px-4 py-3.5 text-center">
-                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 border border-slate-200 text-[10px] font-bold rounded-md text-slate-705">
+                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 border border-slate-200 text-[10px] font-bold rounded-md text-slate-750">
                       <Clock className="h-3 w-3 text-slate-400 shrink-0" />
-                      <span>{c.durationDays} Days</span>
+                      <span>{c.durationDays} Ngày</span>
                     </div>
                   </td>
 
@@ -316,7 +316,7 @@ export default function CourseList({
                               ? 'bg-emerald-600 border-emerald-650 text-white shadow-xs' 
                               : 'bg-white border-slate-200 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200'
                           }`}
-                          title="Update Program Specification"
+                          title="Cập nhật Đặc tả Chương trình"
                         >
                           <Pencil className="h-3 w-3 shrink-0" />
                         </button>
@@ -324,7 +324,7 @@ export default function CourseList({
                         <button
                           disabled
                           className="p-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed inline-flex items-center justify-center"
-                          title="Update requires Level 4 Clearance"
+                          title="Yêu cầu Quyền hạn Cấp độ 4 để Cập nhật"
                         >
                           <Lock className="h-3 w-3 shrink-0" />
                         </button>
@@ -336,7 +336,7 @@ export default function CourseList({
                           type="button"
                           onClick={() => setCourseToDelete(c)}
                           className="p-1.5 bg-white text-rose-600 border border-slate-200 hover:border-rose-200 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all inline-flex items-center justify-center cursor-pointer"
-                          title="Delete Course Program"
+                          title="Xóa Chương trình Khóa học"
                         >
                           <Trash2 className="h-3 w-3 shrink-0" />
                         </button>
@@ -344,7 +344,7 @@ export default function CourseList({
                         <button
                           disabled
                           className="p-1.5 rounded-lg border border-slate-205 bg-slate-50 text-slate-400 cursor-not-allowed inline-flex items-center justify-center"
-                          title="Delete requires Level 4 Clearance"
+                          title="Yêu cầu Quyền hạn Cấp độ 4 để Xóa"
                         >
                           <Lock className="h-3 w-3 shrink-0" />
                         </button>
@@ -386,7 +386,7 @@ export default function CourseList({
           <div className="space-y-1">
             <h2 id="course-directory-title" className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2 uppercase font-mono">
               <Layers className="h-4 w-4 text-emerald-600" />
-              <span>courses list</span>
+              <span>danh sách khóa học</span>
             </h2>
           </div>
 
@@ -403,7 +403,7 @@ export default function CourseList({
                 className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer border-none font-sans"
               >
                 <Plus className="h-4 w-4 shrink-0" />
-                <span>Add Course</span>
+                <span>Thêm Khóa học</span>
               </button>
             ) : (
               <button
@@ -411,10 +411,10 @@ export default function CourseList({
                 type="button"
                 disabled
                 className="bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 cursor-not-allowed font-sans"
-                title="Adding courses requires Level 4 clearance"
+                title="Yêu cầu Quyền hạn Cấp độ 4 để thêm khóa học"
               >
                 <Lock className="h-4 w-4 shrink-0" />
-                <span>Add Course</span>
+                <span>Thêm Khóa học</span>
               </button>
             )}
           </div>
@@ -429,10 +429,10 @@ export default function CourseList({
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 bg-emerald-600 rounded-full" />
                 <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-mono">
-                  OPITO / GWO Courses
+                  Khóa học OPITO / GWO
                 </h3>
                 <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-150 font-bold font-mono">
-                  {opitoCourses.length} Registered
+                  Đã đăng ký: {opitoCourses.length}
                 </span>
               </div>
             </div>
@@ -445,10 +445,10 @@ export default function CourseList({
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 bg-sky-600 rounded-full" />
                 <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-mono">
-                  HSE Courses
+                  Khóa học HSE (An toàn & Môi trường)
                 </h3>
                 <span className="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full border border-sky-150 font-bold font-mono">
-                  {hseCourses.length} Registered
+                  Đã đăng ký: {hseCourses.length}
                 </span>
               </div>
             </div>
@@ -461,10 +461,10 @@ export default function CourseList({
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 bg-indigo-600 rounded-full" />
                 <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-mono">
-                  DECREE Courses
+                  Khóa học Theo Nghị định
                 </h3>
                 <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-150 font-bold font-mono">
-                  {decreeCourses.length} Registered
+                  Đã đăng ký: {decreeCourses.length}
                 </span>
               </div>
             </div>
@@ -504,7 +504,7 @@ export default function CourseList({
                 <div className="flex items-center gap-2">
                   <BookOpen className="h-4.5 w-4.5 text-emerald-600" />
                   <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-mono">
-                    {editingId ? 'Update Program Details' : 'Add Course Entry'}
+                    {editingId ? 'Cập nhật Chi tiết Chương trình' : 'Thêm Chương trình Khóa học'}
                   </h3>
                 </div>
                 <button 
@@ -534,12 +534,12 @@ export default function CourseList({
                   <div className="sm:col-span-2 space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
                       <Hash className="h-3 w-3" />
-                      <span>Course ID (Code)</span>
+                      <span>Mã Khóa học (Code)</span>
                     </label>
                     <input
                       type="text"
                       required
-                      placeholder="e.g. OSHA-30, GWO-FA"
+                      placeholder="Ví dụ: OSHA-30, GWO-FA"
                       value={code}
                       onChange={(e) => setCode(e.target.value)}
                       className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-2.5 py-2 outline-none transition-all font-mono font-bold text-slate-800"
@@ -550,7 +550,7 @@ export default function CourseList({
                   <div className="sm:col-span-2 space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
                       <Clock className="h-3 w-3" />
-                      <span>Duration (Days)</span>
+                      <span>Thời lượng (Ngày)</span>
                     </label>
                     <input
                       type="number"
@@ -567,12 +567,12 @@ export default function CourseList({
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
                     <FileText className="h-3 w-3" />
-                    <span>Course Name</span>
+                    <span>Tên Khóa học</span>
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. OSHA 30-Hour General Industry Certificate"
+                    placeholder="Ví dụ: Chứng chỉ OSHA 30 Giờ Ngành Công nghiệp Tổng hợp"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-2.5 py-2 outline-none transition-all font-semibold text-slate-800"
@@ -581,7 +581,7 @@ export default function CourseList({
 
                 {/* Domain group selection */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider font-mono">Domain Group</label>
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider font-mono">Nhóm Lĩnh vực</label>
                   <select
                     value={domain}
                     onChange={(e) => setDomain(e.target.value as CourseDomain)}
@@ -603,14 +603,14 @@ export default function CourseList({
                     }}
                     className="px-4 py-2 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer font-sans bg-white"
                   >
-                    Cancel
+                    Hủy bỏ
                   </button>
                   <button
                     type="submit"
                     className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer border-none font-sans"
                   >
                     <Check className="h-4 w-4" />
-                    <span>{editingId ? 'Save Changes' : 'Register Program'}</span>
+                    <span>{editingId ? 'Lưu Thay đổi' : 'Đăng ký Chương mục'}</span>
                   </button>
                 </div>
               </form>
@@ -646,12 +646,12 @@ export default function CourseList({
                     <AlertCircle className="h-5 w-5" />
                   </div>
                   <div className="space-y-1.5">
-                    <h3 className="text-xs font-extrabold text-slate-950 uppercase tracking-wider font-mono">Confirm Delete</h3>
+                    <h3 className="text-xs font-extrabold text-slate-950 uppercase tracking-wider font-mono">Xác nhận Xóa</h3>
                     <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
-                      Are you sure you want to permanently delete program <span className="font-extrabold text-slate-800">{courseToDelete.code}</span>?
+                      Bạn có chắc chắn muốn xóa vĩnh viễn chương trình đào tạo <span className="font-extrabold text-slate-800">{courseToDelete.code}</span>?
                     </p>
                     <p className="text-[10px] text-rose-600 bg-rose-50/55 border border-rose-100 p-2 rounded-lg font-semibold leading-tight">
-                      This action is irreversible and will purge curriculum records.
+                      Hành động này không thể hoàn tác và sẽ loại bỏ vĩnh viễn dữ liệu các môn học.
                     </p>
                   </div>
                 </div>
@@ -662,7 +662,7 @@ export default function CourseList({
                     onClick={() => setCourseToDelete(null)}
                     className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-850 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all cursor-pointer font-sans"
                   >
-                    Cancel
+                    Hủy bỏ
                   </button>
                   <button
                     type="button"
@@ -676,7 +676,7 @@ export default function CourseList({
                     className="px-5 py-2 text-xs font-black uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 font-sans border-none shadow-md shadow-rose-205 ring-2 ring-rose-500 ring-offset-2 animate-pulse hover:animate-none scale-102 hover:scale-105"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    <span>Confirm Delete</span>
+                    <span>Xác nhận Xóa</span>
                   </button>
                 </div>
               </div>
