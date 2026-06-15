@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 
 import { Course, CourseSession, Member, Task, Classroom } from './types';
-import { INITIAL_COURSES, INITIAL_SESSIONS } from './data';
+import { INITIAL_COURSES, INITIAL_SESSIONS, CLASSROOMS } from './data';
 import { formatDate } from './utils/date';
 import DashboardStats from './components/DashboardStats';
 import TimelineView from './components/TimelineView';
@@ -184,6 +184,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Members real-time snapshot subscription failed:", error);
+      handleFirestoreError(error, OperationType.GET, 'members');
     });
 
     return () => {
@@ -209,6 +210,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Courses subscription failed:", error);
+      handleFirestoreError(error, OperationType.GET, 'courses');
     });
 
     const unsubscribeSessions = onSnapshot(collection(db, 'sessions'), (snapshot) => {
@@ -225,6 +227,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Sessions subscription failed:", error);
+      handleFirestoreError(error, OperationType.GET, 'sessions');
     });
 
     const unsubscribeTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
@@ -235,6 +238,7 @@ export default function App() {
       setTasks(list);
     }, (error) => {
       console.error("Tasks subscription failed:", error);
+      handleFirestoreError(error, OperationType.GET, 'tasks');
     });
 
     const unsubscribeClassrooms = onSnapshot(collection(db, 'classrooms'), (snapshot) => {
@@ -242,11 +246,18 @@ export default function App() {
       snapshot.forEach((doc) => {
         list.push(doc.data() as Classroom);
       });
-      // Sort classrooms by name so they have a stable order
-      list.sort((a, b) => a.name.localeCompare(b.name));
-      setClassrooms(list);
+      if (snapshot.empty) {
+        CLASSROOMS.forEach((room) => {
+          setDoc(doc(db, "classrooms", room.id), cleanUndefined(room)).catch((err) => console.error(err));
+        });
+      } else {
+        // Sort classrooms by name so they have a stable order
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setClassrooms(list);
+      }
     }, (error) => {
       console.error("Classrooms subscription failed:", error);
+      handleFirestoreError(error, OperationType.GET, 'classrooms');
     });
 
     return () => {

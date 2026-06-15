@@ -5,7 +5,13 @@
 
 import { Course, CourseSession, Classroom } from './types';
 
-export const CLASSROOMS: Classroom[] = [];
+export const CLASSROOMS: Classroom[] = [
+  { id: 'room-101', name: 'Phòng thực hành An toàn Chính (Phòng 101)', capacity: 25, building: 'Nhà A (Trụ sở Đào tạo An toàn)' },
+  { id: 'room-102', name: 'Phòng Vật lý Môi trường 102', capacity: 20, building: 'Nhà A (Trụ sở Đào tạo An toàn)' },
+  { id: 'room-ex', name: 'Sân thực hành Diễn tập Phòng cháy Chữa cháy', capacity: 30, building: 'Khu vực Ngoài trời' },
+  { id: 'room-conf', name: 'Phòng mô phỏng Không gian hạn chế Công nghiệp', capacity: 15, building: 'Khu Phụ trợ Đào tạo' },
+  { id: 'room-eco', name: 'Phòng thí nghiệm Phân tích Hệ sinh thái B', capacity: 20, building: 'Nhà B (Khu Sinh thái)' },
+];
 
 export const INSTRUCTORS: string[] = [
   'TS. Elena Rostova (Chuyên gia Tuân thủ Môi trường)',
