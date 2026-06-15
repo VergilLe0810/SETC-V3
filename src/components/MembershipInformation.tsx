@@ -416,6 +416,19 @@ export default function MembershipInformation({
       m.position.toLowerCase().includes(registrySearch.toLowerCase()) ||
       (m.phone || '').toLowerCase().includes(registrySearch.toLowerCase()) ||
       (m.authorizedLevel || '').toLowerCase().includes(registrySearch.toLowerCase());
+  }).sort((a, b) => {
+    const levelOrder: Record<string, number> = {
+      'level 4': 4,
+      'level 3': 3,
+      'level 2': 2,
+      'level 1': 1
+    };
+    const lvlA = levelOrder[a.authorizedLevel || 'level 1'] || 1;
+    const lvlB = levelOrder[b.authorizedLevel || 'level 1'] || 1;
+    if (lvlA !== lvlB) {
+      return lvlB - lvlA;
+    }
+    return a.name.localeCompare(b.name, 'vi');
   });
 
   return (
@@ -794,7 +807,6 @@ export default function MembershipInformation({
                        <th className="px-5 py-3">Phòng Học / Khu Thực Hành</th>
                        <th className="px-5 py-3">Sức Chứa (Học Viên)</th>
                        <th className="px-5 py-3">Tòa Nhà / Vị Trí</th>
-                       <th className="px-5 py-3">Trang Thiết Bị & Vật Tư</th>
                        <th className="px-5 py-3">Trạng Thái</th>
                        {isAuthorized && <th className="px-5 py-3 text-right">Thao Tác</th>}
                      </tr>
@@ -859,15 +871,6 @@ export default function MembershipInformation({
                              }`}>
                                {room.building}
                              </span>
-                           </td>
-                           <td className="px-5 py-3.5 max-w-[280px]">
-                             <div className="flex flex-wrap gap-1">
-                               {facilities.map((fac, idx) => (
-                                 <span key={idx} className="bg-slate-55 border border-slate-150 text-slate-600 text-[9px] px-1.5 py-0.5 rounded font-medium">
-                                   {fac}
-                                 </span>
-                               ))}
-                             </div>
                            </td>
                            <td className="px-5 py-3.5">
                              <div className="flex items-center gap-1.5">
