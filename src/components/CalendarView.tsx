@@ -158,7 +158,7 @@ export default function CalendarView({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 border-b border-slate-100 pb-4">
           <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <Calendar className="h-5 w-5 text-slate-600" />
-            Lịch Đào Tạo
+            Lịch Đào tạo
           </h2>
 
           {/* Month & Year Dropdown selection */}
@@ -441,7 +441,7 @@ export default function CalendarView({
                           <div className="flex items-start gap-2">
                             <Users className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                             <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Trợ giảng (TA)</span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Phụ giảng (TA)</span>
                               <span className="text-slate-850 font-bold block whitespace-pre-wrap leading-tight">
                                 {session.taOfficer || 'Chưa phân công'}
                               </span>
@@ -451,7 +451,7 @@ export default function CalendarView({
                           <div className="flex items-start gap-2">
                             <Users className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
                             <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Trợ lý giảng viên (TG)</span>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Trợ giảng (TG)</span>
                               <span className="text-slate-850 font-bold block whitespace-pre-wrap leading-tight">
                                 {session.tgOfficer || 'Chưa phân công'}
                               </span>

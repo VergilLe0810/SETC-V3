@@ -304,8 +304,8 @@ export default function DashboardStats({
     const email = currentUserEmail.toLowerCase();
     const roles: string[] = [];
     if (session.instructor.toLowerCase().includes(name)) roles.push('Giảng viên');
-    if (session.taOfficer && session.taOfficer.toLowerCase().includes(name)) roles.push('Trợ giảng (TA)');
-    if (session.tgOfficer && session.tgOfficer.toLowerCase().includes(name)) roles.push('Giám thị (TG)');
+    if (session.taOfficer && session.taOfficer.toLowerCase().includes(name)) roles.push('Phụ giảng (TA)');
+    if (session.tgOfficer && session.tgOfficer.toLowerCase().includes(name)) roles.push('Trợ giảng (TG)');
     if (session.notes && session.notes.toLowerCase().includes(name)) roles.push('Điều phối viên');
     if (session.enrolledIds?.some(id => id.toLowerCase().includes(name) || id.toLowerCase().includes(email))) roles.push('Học viên tham gia');
     return roles.join(', ') || 'Học viên';
@@ -459,9 +459,21 @@ export default function DashboardStats({
     );
   };
 
-  // Use real-time filtered birthdays - upcoming in the current calendar year
+  // Use real-time filtered birthdays - matching the selected month and year
   const realTimeBirthdayMembers = React.useMemo(() => {
-    const todayRef = new Date(realTimeYear, realTimeMonthIdx, realTimeDay);
+    const selectedMonthIdx = MONTH_LIST.indexOf(activeMonth);
+    if (selectedMonthIdx === -1) return [];
+
+    // Determine the reference date to count remaining days:
+    // If selected month and year is the actual current real-time month and year, use real-time current date.
+    // Otherwise, use the selected activeDay (or 1st day of the selected month if 'all' is selected).
+    let todayRef: Date;
+    if (selectedMonthIdx === realTimeMonthIdx && activeYear === realTimeYear) {
+      todayRef = new Date(realTimeYear, realTimeMonthIdx, realTimeDay);
+    } else {
+      const refDay = typeof activeDay === 'number' ? activeDay : 1;
+      todayRef = new Date(activeYear, selectedMonthIdx, refDay);
+    }
     todayRef.setHours(0, 0, 0, 0);
 
     return members
@@ -475,25 +487,23 @@ export default function DashboardStats({
         const birthDate = new Date(m.dob);
         if (isNaN(birthDate.getTime())) return false;
 
-        // Birthday in current year
-        const bdayThisYear = new Date(realTimeYear, birthDate.getMonth(), birthDate.getDate());
-        bdayThisYear.setHours(0, 0, 0, 0);
-
-        // Filter: must be on or after today AND in the current year
-        return bdayThisYear >= todayRef && bdayThisYear.getFullYear() === realTimeYear;
+        // Check if birth month matches selected month
+        return birthDate.getMonth() === selectedMonthIdx;
       })
       .map((m) => {
         const birthDate = new Date(m.dob);
-        const bdayThisYear = new Date(realTimeYear, birthDate.getMonth(), birthDate.getDate());
+        // Anniversary of birthday in selected year
+        const bdayThisYear = new Date(activeYear, birthDate.getMonth(), birthDate.getDate());
         bdayThisYear.setHours(0, 0, 0, 0);
 
-        let age = realTimeYear - birthDate.getFullYear();
+        let age = activeYear - birthDate.getFullYear();
 
         const t1 = todayRef.getTime();
         const t2 = bdayThisYear.getTime();
         const daysRemaining = Math.max(0, Math.round((t2 - t1) / (1000 * 60 * 60 * 24)));
 
-        const isToday = daysRemaining === 0;
+        const isToday = birthDate.getDate() === todayRef.getDate() && birthDate.getMonth() === todayRef.getMonth();
+        const hasPassed = bdayThisYear < todayRef;
 
         return {
           member: m,
@@ -502,10 +512,16 @@ export default function DashboardStats({
           nextBdayStr: formatDate(bdayThisYear),
           daysRemaining,
           isToday,
+          hasPassed,
         };
       })
-      .sort((a, b) => a.daysRemaining - b.daysRemaining);
-  }, [members, realTimeMonthIdx, realTimeYear, realTimeDay]);
+      .sort((a, b) => {
+        // Sort chronologically by day of birth date
+        const dayA = new Date(a.member.dob).getDate();
+        const dayB = new Date(b.member.dob).getDate();
+        return dayA - dayB;
+      });
+  }, [members, activeMonth, activeYear, activeDay, MONTH_LIST, realTimeMonthIdx, realTimeYear, realTimeDay]);
 
   const handleToggleTaskStatus = (taskId: string) => {
     setTasks(prev => prev.map(t => {
@@ -826,7 +842,7 @@ export default function DashboardStats({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-5 mb-6">
         {/* Card 1: Ongoing block */}
         <div 
           id="stat-ongoing" 
@@ -834,15 +850,15 @@ export default function DashboardStats({
             setActiveModal('ongoing');
             setModalTab('mine');
           }}
-          className="bg-emerald-50/40 border border-emerald-250/60 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-emerald-50 hover:border-emerald-400 hover:shadow-[0_4px_12px_rgba(16,185,129,0.08)] transition-all duration-150 hover:scale-[1.01]"
-          title="Click để xem chi tiết các khóa đang diễn ra"
+          className="bg-emerald-50/40 border border-emerald-250/60 p-4.5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-emerald-50 hover:border-emerald-400 hover:shadow-[0_4px_12px_rgba(16,185,129,0.08)] transition-all duration-150 hover:scale-[1.01] min-w-0 h-full"
+          title="Click để xem chi tiết các công việc đang diễn ra"
         >
-          <div>
-            <span className="text-[11px] font-bold text-emerald-800 tracking-wider uppercase">Khóa học Đang diễn ra</span>
-            <h3 className="text-3xl font-extrabold text-emerald-950 mt-1">{realTimeTodayCourses.length}</h3>
+          <div className="min-w-0 flex-1">
+            <span className="text-xs font-bold text-emerald-800 uppercase block tracking-tight">Công việc đang diễn ra</span>
+            <h3 className="text-2xl font-extrabold text-emerald-950 mt-1">{realTimeTodayCourses.length}</h3>
           </div>
-          <div className="bg-emerald-500/10 p-3 rounded-xl text-emerald-600">
-            <Activity className="h-5.5 w-5.5" />
+          <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-600 shrink-0 ml-2">
+            <Activity className="h-5 w-5" />
           </div>
         </div>
 
@@ -853,15 +869,15 @@ export default function DashboardStats({
             setActiveModal('upcoming');
             setModalTab('mine');
           }}
-          className="bg-sky-50/45 border border-sky-250/60 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-sky-100 hover:border-sky-400 hover:shadow-[0_4px_12px_rgba(14,165,233,0.08)] transition-all duration-150 hover:scale-[1.01]"
-          title="Click để xem chi tiết các khóa sắp tới"
+          className="bg-sky-50/45 border border-sky-250/60 p-4.5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-sky-100 hover:border-sky-400 hover:shadow-[0_4px_12px_rgba(14,165,233,0.08)] transition-all duration-150 hover:scale-[1.01] min-w-0 h-full"
+          title="Click để xem chi tiết các công việc sắp tới"
         >
-          <div>
-            <span className="text-[11px] font-bold text-sky-800 tracking-wider uppercase">Khóa học Sắp tới</span>
-            <h3 className="text-3xl font-extrabold text-sky-950 mt-1">{realTimeUpcoming.length}</h3>
+          <div className="min-w-0 flex-1">
+            <span className="text-xs font-bold text-sky-800 uppercase block tracking-tight">Công việc sắp tới</span>
+            <h3 className="text-2xl font-extrabold text-sky-950 mt-1">{realTimeUpcoming.length}</h3>
           </div>
-          <div className="bg-sky-500/10 p-3 rounded-xl text-sky-600">
-            <Calendar className="h-5.5 w-5.5" />
+          <div className="bg-sky-500/10 p-2.5 rounded-xl text-sky-600 shrink-0 ml-2">
+            <Calendar className="h-5 w-5" />
           </div>
         </div>
 
@@ -869,15 +885,15 @@ export default function DashboardStats({
         <div 
           id="stat-your-tasks" 
           onClick={() => setActiveModal('your_tasks')}
-          className="bg-indigo-50/40 border border-indigo-250 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-indigo-50 hover:border-indigo-400 hover:shadow-[0_4px_12px_rgba(79,70,229,0.08)] transition-all duration-150 hover:scale-[1.01]"
+          className="bg-indigo-50/40 border border-indigo-250 p-4.5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-indigo-50 hover:border-indigo-400 hover:shadow-[0_4px_12px_rgba(79,70,229,0.08)] transition-all duration-150 hover:scale-[1.01] min-w-0 h-full"
           title="Click để xem danh sách nhiệm vụ chi tiết"
         >
-          <div>
-            <span className="text-[11px] font-bold text-indigo-800 tracking-wider uppercase">Nhiệm vụ của Bạn</span>
-            <h3 className="text-3xl font-extrabold text-indigo-950 mt-1">{realTimePendingCount}</h3>
+          <div className="min-w-0 flex-1">
+            <span className="text-xs font-bold text-indigo-800 uppercase block tracking-tight">Nhiệm vụ của Bạn</span>
+            <h3 className="text-2xl font-extrabold text-indigo-950 mt-1">{realTimePendingCount}</h3>
           </div>
-          <div className="bg-indigo-500/10 p-3 rounded-xl text-indigo-600">
-            <CheckSquare className="h-5.5 w-5.5" />
+          <div className="bg-indigo-500/10 p-2.5 rounded-xl text-indigo-600 shrink-0 ml-2">
+            <CheckSquare className="h-5 w-5" />
           </div>
         </div>
 
@@ -885,25 +901,25 @@ export default function DashboardStats({
         <div 
           id="stat-finished-tasks" 
           onClick={() => setActiveModal('your_tasks')}
-          className="bg-teal-50/40 border border-teal-250 p-5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-teal-50 hover:border-teal-400 hover:shadow-[0_4px_12px_rgba(20,184,166,0.08)] transition-all duration-150 hover:scale-[1.01]"
+          className="bg-teal-50/40 border border-teal-250 p-4.5 rounded-2xl flex items-center justify-between shadow-[0_2px_8px_rgba(0,0,0,0.01)] cursor-pointer hover:bg-teal-50 hover:border-teal-400 hover:shadow-[0_4px_12px_rgba(20,184,166,0.08)] transition-all duration-150 hover:scale-[1.01] min-w-0 h-full"
           title="Click để xem danh sách nhiệm vụ chi tiết"
         >
-          <div>
-            <span className="text-[11px] font-bold text-teal-800 tracking-wider uppercase">Nhiệm vụ Đã xong</span>
-            <h3 className="text-3xl font-extrabold text-teal-950 mt-1">{realTimeCompletedCount}</h3>
+          <div className="min-w-0 flex-1">
+            <span className="text-xs font-bold text-teal-800 uppercase block tracking-tight">Nhiệm vụ Đã xong</span>
+            <h3 className="text-2xl font-extrabold text-teal-950 mt-1">{realTimeCompletedCount}</h3>
           </div>
-          <div className="bg-teal-500/10 p-3 rounded-xl text-teal-600">
-            <CheckSquare className="h-5.5 w-5.5" />
+          <div className="bg-teal-500/10 p-2.5 rounded-xl text-teal-600 shrink-0 ml-2">
+            <CheckSquare className="h-5 w-5" />
           </div>
         </div>
 
-        {/* Card 4: Month Birthday Events Box */}
-        <div id="stat-month-birthdays" className="bg-rose-50/30 border border-rose-200/70 hover:border-rose-300 flex flex-col justify-between p-4.5 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.01)] transition-all min-h-[145px]">
+        {/* Card 5: Month Birthday Events Box */}
+        <div id="stat-month-birthdays" className="bg-rose-50/30 border border-rose-200/70 hover:border-rose-300 flex flex-col justify-between p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.01)] transition-all min-h-[145px] min-w-0 h-full">
           <div>
             <div className="flex items-center justify-between gap-1 mb-2">
               <div className="flex items-center gap-1.5 min-w-0">
                 <Cake className="h-4 w-4 text-rose-500 shrink-0" />
-                <span className="text-[11px] font-bold text-rose-900 uppercase tracking-wider truncate">Sinh nhật Sắp tới ({realTimeYear})</span>
+                <span className="text-xs font-bold text-rose-900 uppercase tracking-tight truncate">Sinh nhật ({VI_MONTH_NAMES[activeMonth] || activeMonth}/{activeYear})</span>
                 <span className="text-[9.5px] px-1.5 py-0.2 rounded-full font-bold bg-rose-100 text-rose-800 shrink-0">
                   {realTimeBirthdayMembers.length}
                 </span>
@@ -913,12 +929,12 @@ export default function DashboardStats({
             {/* Micro List of Birthdays */}
             <div className="space-y-1.5 max-h-[75px] overflow-y-auto pr-0.5 scrollbar-thin">
               {realTimeBirthdayMembers.length === 0 ? (
-                <p className="text-[10px] text-slate-500 italic py-2">Không có sinh nhật nào sắp tới.</p>
+                <p className="text-[10px] text-slate-500 italic py-2">Không có sinh nhật nào trong tháng này.</p>
               ) : (
-                realTimeBirthdayMembers.map(({ member, formattedDob, daysRemaining, isToday }) => (
+                realTimeBirthdayMembers.map(({ member, formattedDob, daysRemaining, isToday, hasPassed }) => (
                   <div 
                     key={member.id} 
-                    className={`flex items-center justify-between py-1.5 px-2 rounded-lg border transition-all text-[10px] font-sans ${
+                    className={`flex items-center justify-between py-1.2 px-2 rounded-lg border transition-all text-[10px] font-sans ${
                       isToday 
                         ? 'bg-rose-50 border-rose-250 text-rose-950 font-bold' 
                         : 'bg-white/50 border-rose-100/30 hover:bg-white text-slate-800'
@@ -935,6 +951,10 @@ export default function DashboardStats({
                         <span className="text-rose-600 font-extrabold flex items-center gap-0.5">
                           <Sparkles className="h-2.5 w-2.5" />
                           Hôm nay! 🎉
+                        </span>
+                      ) : hasPassed ? (
+                        <span className="text-slate-400">
+                          Đã qua
                         </span>
                       ) : (
                         <span>

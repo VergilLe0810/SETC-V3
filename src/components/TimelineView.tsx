@@ -176,29 +176,37 @@ export default function TimelineView({
   };
 
   // Courses Assignment (Schedule Manager Component) state and form values
+  const getTodayString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState<boolean>(false);
   const [selCourseId, setSelCourseId] = useState<string>(courses[0]?.id || '');
   const [assignCourseCode, setAssignCourseCode] = useState<string>(courses[0]?.code || '');
   const [assignCourseName, setAssignCourseName] = useState<string>(courses[0]?.title || '');
-  const [assignStartDate, setAssignStartDate] = useState<string>('2026-06-10');
-  const [assignEndDate, setAssignEndDate] = useState<string>('2026-06-12');
+  const [assignStartDate, setAssignStartDate] = useState<string>(getTodayString());
+  const [assignEndDate, setAssignEndDate] = useState<string>('');
   const [assignTa, setAssignTa] = useState<string>('');
   const [assignTg, setAssignTg] = useState<string>('');
   const [assignMethod, setAssignMethod] = useState<'Online' | 'Offline'>('Offline');
   const [assignInstructor, setAssignInstructor] = useState<string>(() => {
     const foundInst = members?.find(m => m.position?.toLowerCase().includes('instructor') || m.position?.toLowerCase().includes('giảng viên'));
     if (foundInst) {
-      return `${foundInst.name} (${foundInst.position || 'Giảng viên'})`;
+      return foundInst.name;
     }
     const defaultInst = members?.[1] || members?.[0];
     if (defaultInst) {
-      return `${defaultInst.name} (${defaultInst.position || 'Thành viên'})`;
+      return defaultInst.name;
     }
     return '';
   });
   const [assignClassroom, setAssignClassroom] = useState<string>(CLASSROOMS[0]?.name || '');
-  const [assignStartTime, setAssignStartTime] = useState<string>('09:00');
-  const [assignEndTime, setAssignEndTime] = useState<string>('16:00');
+  const [assignStartTime, setAssignStartTime] = useState<string>('08:00');
+  const [assignEndTime, setAssignEndTime] = useState<string>('16:30');
   const [assignCapacity, setAssignCapacity] = useState<number>(25);
   const [assignNote, setAssignNote] = useState<string>('');
   const [assignFeedback, setAssignFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -295,7 +303,7 @@ export default function TimelineView({
         });
 
         if (hasOverlap) {
-          testConflicts.push(`Trợ giảng đồng hành (TA) "${conflictingTaName}" không thể tham gia nhiều lớp Offline cùng lúc (Đã có lịch lớp "${code}").`);
+          testConflicts.push(`Phụ giảng "${conflictingTaName}" không thể tham gia nhiều lớp Offline cùng lúc (Đã có lịch lớp "${code}").`);
         }
       }
 
@@ -318,7 +326,7 @@ export default function TimelineView({
         });
 
         if (hasOverlap) {
-          testConflicts.push(`Giám sát đào tạo (TG) "${conflictingTgName}" không thể tham gia nhiều lớp Offline cùng lúc (Đã có lịch lớp "${code}").`);
+          testConflicts.push(`Trợ giảng "${conflictingTgName}" không thể tham gia nhiều lớp Offline cùng lúc (Đã có lịch lớp "${code}").`);
         }
       }
     });
@@ -350,7 +358,7 @@ export default function TimelineView({
       onAddSession(newSessionObject);
       setAssignFeedback({ 
         type: 'success', 
-        message: `Lớp học cho khóa ${assignCourseCode} đã được phân lịch thành công cho Giảng viên ${assignInstructor.split(' (')[0]}` 
+        message: `Lớp học cho khóa ${assignCourseCode} đã được phân lịch thành công cho Giảng viên ${assignInstructor}` 
       });
       // Clear specific temporary fields
       setAssignTa('');
@@ -437,7 +445,7 @@ export default function TimelineView({
   const hasValidDates = startD && endD && !isNaN(startD.getTime()) && !isNaN(endD.getTime()) && startD <= endD;
 
   const activeConflicts: {
-    type: 'Phòng học' | 'Giảng viên' | 'Trợ giảng/Giám sát';
+    type: 'Phòng học' | 'Giảng viên' | 'Trợ giảng/Phụ giảng';
     message: string;
     conflictingSession: CourseSession;
     courseCode: string;
@@ -514,8 +522,8 @@ export default function TimelineView({
 
         if (hasOverlap) {
           activeConflicts.push({
-            type: 'Trợ giảng/Giám sát',
-            message: `Nhiệm vụ TA: "${conflictingTaName}" đã được giao cho lớp "${courseCode}" trong khoảng thời gian này.`,
+            type: 'Trợ giảng/Phụ giảng',
+            message: `Nhiệm vụ Phụ giảng: "${conflictingTaName}" đã được giao cho lớp "${courseCode}" trong khoảng thời gian này.`,
             conflictingSession: ex,
             courseCode,
             courseTitle
@@ -543,8 +551,8 @@ export default function TimelineView({
 
         if (hasOverlap) {
           activeConflicts.push({
-            type: 'Trợ giảng/Giám sát',
-            message: `Nhiệm vụ TG: "${conflictingTgName}" đã được giao cho lớp "${courseCode}" trong khoảng thời gian này.`,
+            type: 'Trợ giảng/Phụ giảng',
+            message: `Nhiệm vụ Trợ giảng: "${conflictingTgName}" đã được giao cho lớp "${courseCode}" trong khoảng thời gian này.`,
             conflictingSession: ex,
             courseCode,
             courseTitle
@@ -572,7 +580,7 @@ export default function TimelineView({
               <div>
                 <h3 className="text-md font-bold text-slate-900 flex items-center gap-2">
                   <Settings className="h-4.5 w-4.5 text-[#559b8c]" />
-                  Điều phối & Lên lịch Đào tạo khóa học
+                  Đăng ký Khóa học
                 </h3>
               </div>
               <button
@@ -690,80 +698,42 @@ export default function TimelineView({
 
                   {/* TA (Teaching Assisstance) & TG (Teacher Assistance) Fields */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
-                    <div className="space-y-1 px-1">
-                      <div className="flex justify-between items-center mb-0.5 flex-row">
-                        <label className="block text-[10.5px] font-black text-slate-600 uppercase tracking-wider">
-                          Trợ giảng Đồng hành (TA)
-                        </label>
-                        <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">Tùy chọn nhiều</span>
-                      </div>
-                      <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg p-1.5 space-y-1 bg-white focus-within:ring-1 focus-within:ring-[#559b8c] focus-within:border-transparent">
-                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => {
-                          const list = assignTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-                          const isChecked = list.some(name => name.toLowerCase() === m.name.toLowerCase());
-                          return (
-                            <label key={m.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer select-none flex-row">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => {
-                                  if (isChecked) {
-                                    setAssignTa(list.filter(x => x.toLowerCase() !== m.name.toLowerCase()).join(', '));
-                                  } else {
-                                    setAssignTa([...list, m.name].join(', '));
-                                  }
-                                }}
-                                className="rounded text-[#559b8c] focus:ring-[#559b8c] h-3.5 w-3.5"
-                              />
-                              <div className="text-xs text-slate-750 font-bold leading-none flex justify-between w-full flex-row">
-                                <span>{m.name}</span>
-                                <span className="text-[9.5px] text-slate-400 capitalize">{m.position || 'Thành viên'}</span>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                      <div className="text-[9px] text-slate-450 font-bold text-left">
-                        Đã chọn: <span className="text-emerald-700 font-extrabold">{assignTa || 'Không có (Để trống)'}</span>
-                      </div>
+                    <div>
+                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        Phụ giảng
+                      </label>
+                      <select
+                        id="assign-select-ta"
+                        value={assignTa}
+                        onChange={(e) => setAssignTa(e.target.value)}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                      >
+                        <option value="">-- Trống --</option>
+                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                          <option key={m.id} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <div className="space-y-1 px-1">
-                      <div className="flex justify-between items-center mb-0.5 flex-row">
-                        <label className="block text-[10.5px] font-black text-slate-600 uppercase tracking-wider">
-                          Giám sát Đào tạo (TG)
-                        </label>
-                        <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">Tùy chọn nhiều</span>
-                      </div>
-                      <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg p-1.5 space-y-1 bg-white focus-within:ring-1 focus-within:ring-[#559b8c] focus-within:border-transparent">
-                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => {
-                          const list = assignTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-                          const isChecked = list.some(name => name.toLowerCase() === m.name.toLowerCase());
-                          return (
-                            <label key={m.id} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded cursor-pointer select-none flex-row">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => {
-                                  if (isChecked) {
-                                    setAssignTg(list.filter(x => x.toLowerCase() !== m.name.toLowerCase()).join(', '));
-                                  } else {
-                                    setAssignTg([...list, m.name].join(', '));
-                                  }
-                                }}
-                                className="rounded text-[#559b8c] focus:ring-[#559b8c] h-3.5 w-3.5"
-                              />
-                              <div className="text-xs text-slate-750 font-bold leading-none flex justify-between w-full flex-row">
-                                <span>{m.name}</span>
-                                <span className="text-[9.5px] text-slate-400 capitalize">{m.position || 'Thành viên'}</span>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                      <div className="text-[9px] text-slate-450 font-bold text-left">
-                        Đã chọn: <span className="text-amber-700 font-extrabold">{assignTg || 'Không có (Để trống)'}</span>
-                      </div>
+                    <div>
+                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        Trợ giảng
+                      </label>
+                      <select
+                        id="assign-select-tg"
+                        value={assignTg}
+                        onChange={(e) => setAssignTg(e.target.value)}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                      >
+                        <option value="">-- Trống --</option>
+                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                          <option key={m.id} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -771,7 +741,7 @@ export default function TimelineView({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1 text-left">
                     <div>
                       <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Giảng viên / Hướng dẫn viên
+                        Giảng viên
                       </label>
                       <select
                         id="assign-select-instructor"
@@ -780,8 +750,8 @@ export default function TimelineView({
                         className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
                       >
                         {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
-                          <option key={m.id} value={`${m.name} (${m.position || 'Giảng viên'})`}>
-                            {m.name} ({m.position || 'Giảng viên'})
+                          <option key={m.id} value={m.name}>
+                            {m.name}
                           </option>
                         ))}
                       </select>
@@ -789,7 +759,7 @@ export default function TimelineView({
 
                     <div>
                       <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Phòng học Chỉ định
+                        Phòng học
                       </label>
                       <select
                         id="assign-select-classroom"
@@ -820,7 +790,7 @@ export default function TimelineView({
                           value={assignStartTime}
                           onChange={(e) => setAssignStartTime(e.target.value)}
                           className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
-                          placeholder="09:00"
+                          placeholder="08:00"
                         />
                         <span className="text-slate-400 font-bold px-2 shrink-0">-</span>
                         <input
@@ -830,14 +800,14 @@ export default function TimelineView({
                           value={assignEndTime}
                           onChange={(e) => setAssignEndTime(e.target.value)}
                           className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
-                          placeholder="16:00"
+                          placeholder="16:30"
                         />
                       </div>
                     </div>
 
                     <div>
                       <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Giới hạn Sĩ số Lớp học
+                        Sĩ số
                       </label>
                       <input
                         id="assign-input-capacity"
@@ -885,7 +855,7 @@ export default function TimelineView({
                       }`}
                     >
                       <Plus className="h-4 w-4" />
-                      Xác nhận Phân lịch
+                      Xác nhận
                     </button>
                   </div>
                 </form>
@@ -946,12 +916,12 @@ export default function TimelineView({
                             </div>
                             {c.conflictingSession.taOfficer && (
                               <div>
-                                <span className="font-extrabold text-slate-500">TA:</span> {c.conflictingSession.taOfficer}
+                                <span className="font-extrabold text-slate-500">Phụ giảng:</span> {c.conflictingSession.taOfficer}
                               </div>
                             )}
                             {c.conflictingSession.tgOfficer && (
                               <div>
-                                <span className="font-extrabold text-slate-500">TG:</span> {c.conflictingSession.tgOfficer}
+                                <span className="font-extrabold text-slate-500">Trợ giảng:</span> {c.conflictingSession.tgOfficer}
                               </div>
                             )}
                           </div>
@@ -978,14 +948,14 @@ export default function TimelineView({
                 {/* Note Box for the Task Giver */}
                 <div className="space-y-2 pt-3 border-t border-slate-200">
                   <label htmlFor="assign-notes-textarea" className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
-                    📋 Ghi chú Giảng dạy & Địa giới
+                    📋 Ghi chú
                   </label>
                   <textarea
                     id="assign-notes-textarea"
                     rows={4}
                     value={assignNote}
                     onChange={(e) => setAssignNote(e.target.value)}
-                    placeholder="Ví dụ: Trợ giảng TA cần chuẩn bị tài liệu giáo trình và trang thiết bị dây đai an toàn lên phòng học trước 8:30 sáng."
+                    placeholder=""
                     className="w-full text-xs bg-white border border-slate-200 rounded-xl p-3 outline-none focus:ring-1 focus:ring-[#559b8c] font-semibold resize-none text-slate-800 leading-relaxed shadow-3xs"
                   />
                 </div>
@@ -1003,7 +973,7 @@ export default function TimelineView({
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2 mb-0">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-            Biểu đồ Lịch trình Đào tạo
+            Biểu đồ Lịch Đào tạo
           </h2>
           {hasAssignmentAccess && (
             <button
@@ -1026,7 +996,7 @@ export default function TimelineView({
               title="Mở bảng phân bổ lịch học khóa đào tạo"
             >
               <Calendar className="h-3.5 w-3.5 shrink-0" />
-              <span>Giao Lớp & Phân lịch học</span>
+              <span>Đăng ký Khóa học</span>
             </button>
           )}
         </div>
@@ -1532,7 +1502,7 @@ export default function TimelineView({
                   {/* TG and TA officers assigned */}
                   <div className="grid grid-cols-2 gap-3.5 text-left font-sans">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Giám sát Đào tạo (TG)</label>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Trợ giảng</label>
                       <input 
                         type="text"
                         value={editTgOfficer}
@@ -1542,7 +1512,7 @@ export default function TimelineView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Trợ giảng Đồng hành (TA)</label>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Phụ giảng</label>
                       <input 
                         type="text"
                         value={editTaOfficer}
@@ -1636,13 +1606,13 @@ export default function TimelineView({
                   {/* TG and TA */}
                   <div className="grid grid-cols-2 gap-4 pt-1">
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Giám sát Đào tạo (TG)</span>
-                      <span id="popup-course-tg" className="text-xs font-semibold text-slate-750 block truncate" title={popupCourseSession.session.tgOfficer || 'Chưa phân công'}>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Trợ giảng</span>
+                      <span id="popup-course-tg" className="text-xs font-semibold text-slate-755 block truncate" title={popupCourseSession.session.tgOfficer || 'Chưa phân công'}>
                         {popupCourseSession.session.tgOfficer || 'Chưa phân công'}
                       </span>
                     </div>
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Trợ giảng đồng hành (TA)</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phụ giảng</span>
                       <span id="popup-course-ta" className="text-xs font-semibold text-slate-755 block truncate" title={popupCourseSession.session.taOfficer || 'Chưa phân công'}>
                         {popupCourseSession.session.taOfficer || 'Chưa phân công'}
                       </span>
@@ -1653,7 +1623,7 @@ export default function TimelineView({
                   <div className="border-t border-slate-50 pt-3">
                     <div className="bg-slate-50 rounded-xl p-3 flex justify-between items-center flex-row">
                       <div className="space-y-0.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-left">Giới hạn Sức chứa lớp</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-left">Sĩ số</span>
                       </div>
                       <div className="bg-emerald-100 text-emerald-800 font-extrabold text-xs px-2.5 py-1 rounded-lg whitespace-nowrap">
                         {popupCourseSession.session.maxCapacity} Học viên
