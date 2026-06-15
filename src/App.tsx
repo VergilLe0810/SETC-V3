@@ -25,7 +25,7 @@ import {
   LogOut
 } from 'lucide-react';
 
-import { Course, CourseSession, Member, Task } from './types';
+import { Course, CourseSession, Member, Task, Classroom } from './types';
 import { INITIAL_COURSES, INITIAL_SESSIONS } from './data';
 import { formatDate } from './utils/date';
 import DashboardStats from './components/DashboardStats';
@@ -59,6 +59,7 @@ export default function App() {
   const [sessions, setSessions] = useState<CourseSession[]>(INITIAL_SESSIONS);
   const [members, setMembers] = useState<Member[]>([]);
   const [tasks, setTasks] = useState<Task[]>(DEFAULT_TASKS);
+  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
 
   const [activeTab, setActiveTab] = useState<'timeline' | 'memberships' | 'profile' | 'courses'>('timeline');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
@@ -236,10 +237,23 @@ export default function App() {
       console.error("Tasks subscription failed:", error);
     });
 
+    const unsubscribeClassrooms = onSnapshot(collection(db, 'classrooms'), (snapshot) => {
+      const list: Classroom[] = [];
+      snapshot.forEach((doc) => {
+        list.push(doc.data() as Classroom);
+      });
+      // Sort classrooms by name so they have a stable order
+      list.sort((a, b) => a.name.localeCompare(b.name));
+      setClassrooms(list);
+    }, (error) => {
+      console.error("Classrooms subscription failed:", error);
+    });
+
     return () => {
       unsubscribeCourses();
       unsubscribeSessions();
       unsubscribeTasks();
+      unsubscribeClassrooms();
     };
   }, [isLoggedIn]);
 
@@ -914,6 +928,31 @@ export default function App() {
     }
   };
 
+  // Classroom management handlers
+  const handleAddClassroom = async (newClassroom: Classroom) => {
+    try {
+      await setDoc(doc(db, "classrooms", newClassroom.id), cleanUndefined(newClassroom));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `classrooms/${newClassroom.id}`);
+    }
+  };
+
+  const handleUpdateClassroom = async (updatedClassroom: Classroom) => {
+    try {
+      await setDoc(doc(db, "classrooms", updatedClassroom.id), cleanUndefined(updatedClassroom));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `classrooms/${updatedClassroom.id}`);
+    }
+  };
+
+  const handleRemoveClassroom = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "classrooms", id));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `classrooms/${id}`);
+    }
+  };
+
   const handleToggleTaskStatus = async (task: Task) => {
     const nextStatus = task.status === 'Completed' ? 'Pending' : 'Completed';
     const updated = { ...task, status: nextStatus };
@@ -1425,6 +1464,7 @@ export default function App() {
                 onClearAllSessions={handleClearAllSessions}
                 currentUserEmail={userEmail}
                 members={members}
+                classrooms={classrooms}
               />
               <CalendarView 
                 courses={courses} 
@@ -1456,6 +1496,10 @@ export default function App() {
               onAddCourse={handleAddCourse}
               onUpdateCourse={handleUpdateCourse}
               onRemoveCourse={handleRemoveCourse}
+              classrooms={classrooms}
+              onAddClassroom={handleAddClassroom}
+              onUpdateClassroom={handleUpdateClassroom}
+              onRemoveClassroom={handleRemoveClassroom}
             />
           )}
 

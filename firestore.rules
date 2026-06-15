@@ -60,6 +60,13 @@ service cloud.firestore {
              data.createdAt is string;
     }
 
+    function isValidClassroom(data) {
+      return data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.capacity is int && data.capacity > 0 &&
+             data.building is string && data.building.size() > 0 && data.building.size() <= 200;
+    }
+
     // --- COLLECTION ACCESS PATHS ---
 
     // Members collection
@@ -96,6 +103,13 @@ service cloud.firestore {
       allow update: if isValidTask(request.resource.data) && (
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
       );
+      allow delete: if true;
+    }
+
+    // Classrooms collection
+    match /classrooms/{classroomId} {
+      allow read: if true;
+      allow create, update: if isValidId(classroomId) && isValidClassroom(request.resource.data);
       allow delete: if true;
     }
   }

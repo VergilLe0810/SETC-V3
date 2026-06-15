@@ -6,7 +6,7 @@
 import { useState, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, ChevronLeft, ChevronRight, MapPin, Clock, User, Calendar, SlidersHorizontal, Plus, X, AlertTriangle, Trash2, Settings, ShieldAlert, AlertCircle } from 'lucide-react';
-import { Course, CourseSession, Member, CourseDomain } from '../types';
+import { Course, CourseSession, Member, CourseDomain, Classroom } from '../types';
 import { getSessionStatus, CLASSROOMS } from '../data';
 import { getDaysForMonth } from '../utils/dateUtils';
 import { formatDate } from '../utils/date';
@@ -27,6 +27,7 @@ interface TimelineViewProps {
   onClearAllSessions?: () => void;
   currentUserEmail: string;
   members: Member[];
+  classrooms?: Classroom[];
 }
 
 const MONTH_START_DAYS: Record<string, number> = {
@@ -90,8 +91,10 @@ export default function TimelineView({
   onUpdateSession,
   onClearAllSessions,
   currentUserEmail,
-  members
+  members,
+  classrooms = []
 }: TimelineViewProps) {
+  const activeClassrooms = classrooms.length > 0 ? classrooms : CLASSROOMS;
   const loggedInMember = members.find(m => m.email.toLowerCase() === currentUserEmail.toLowerCase());
   const currentUserLevel = loggedInMember?.authorizedLevel?.toLowerCase() || 
     (currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org' || 
@@ -124,6 +127,29 @@ export default function TimelineView({
   const [editTaOfficer, setEditTaOfficer] = useState<string>('');
   const [editTgOfficer, setEditTgOfficer] = useState<string>('');
   const [editMethod, setEditMethod] = useState<'Online' | 'Offline'>('Offline');
+  const [editSubModules, setEditSubModules] = useState<Record<string, {
+    instructor: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    classroom: string;
+    taOfficers?: string[];
+  }>>({
+    "OSI": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "HE": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "SS": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "FF": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "FA": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "HE (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "FF.SR (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "SS (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+  });
+
+  const isSessionOpitoBosiet = !!(popupCourseSession && 
+    (popupCourseSession.course.code?.toUpperCase() === 'OPITO T.BOSIET' || 
+     popupCourseSession.course.title?.toUpperCase().includes('OPITO T.BOSIET') ||
+     popupCourseSession.course.code?.toUpperCase().includes('T.BOSIET')) && 
+    popupCourseSession.course.domain === 'OPITO/GWO');
 
   const handleStartEditingSession = () => {
     if (!popupCourseSession) return;
@@ -139,6 +165,51 @@ export default function TimelineView({
     setEditTaOfficer(session.taOfficer || '');
     setEditTgOfficer(session.tgOfficer || '');
     setEditMethod(session.method || 'Offline');
+    
+    const defaultSubs: Record<string, {
+      instructor: string;
+      date: string;
+      startTime: string;
+      endTime: string;
+      classroom: string;
+      taOfficers?: string[];
+    }> = {
+      "OSI": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "HE": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "SS": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "FF": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "FA": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "HE (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "FF.SR (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "SS (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    };
+    if (session.subModules) {
+      Object.keys(defaultSubs).forEach(key => {
+        const val = session.subModules?.[key];
+        if (val) {
+          if (typeof val === 'object') {
+            defaultSubs[key] = {
+              instructor: val.instructor || "",
+              date: val.date || "",
+              startTime: val.startTime || "08:00",
+              endTime: val.endTime || "16:30",
+              classroom: val.classroom || "",
+              taOfficers: (val as any).taOfficers || []
+            };
+          } else if (typeof val === 'string') {
+            defaultSubs[key] = {
+              instructor: val,
+              date: "",
+              startTime: "08:00",
+              endTime: "16:30",
+              classroom: "",
+              taOfficers: []
+            };
+          }
+        }
+      });
+    }
+    setEditSubModules(defaultSubs);
   };
 
   const handleSaveSessionUpdates = () => {
@@ -149,12 +220,15 @@ export default function TimelineView({
       endDate: editEndDate,
       startTime: editStartTime,
       endTime: editEndTime,
-      instructor: editInstructor,
+      instructor: isSessionOpitoBosiet 
+        ? Object.values(editSubModules).map((v: any) => v.instructor).filter(Boolean).join(', ') || 'Đội ngũ Giảng viên'
+        : editInstructor,
       classroom: editClassroom,
       maxCapacity: editMaxCapacity,
       taOfficer: editTaOfficer,
       tgOfficer: editTgOfficer,
-      method: editMethod,
+      method: isSessionOpitoBosiet ? 'Offline' : editMethod,
+      subModules: isSessionOpitoBosiet ? editSubModules : popupCourseSession.session.subModules,
     };
 
     if (onUpdateSession) {
@@ -206,7 +280,14 @@ export default function TimelineView({
     }
     return '';
   });
-  const [assignClassroom, setAssignClassroom] = useState<string>(CLASSROOMS[0]?.name || '');
+  const [assignClassroom, setAssignClassroom] = useState<string>('');
+  
+  // Keep first classroom selected if state changes
+  useState(() => {
+    if (activeClassrooms.length > 0) {
+      setAssignClassroom(activeClassrooms[0].name);
+    }
+  });
   const [assignStartTime, setAssignStartTime] = useState<string>('08:00');
   const [assignEndTime, setAssignEndTime] = useState<string>('16:30');
   const [assignCapacity, setAssignCapacity] = useState<number>(25);
@@ -216,6 +297,31 @@ export default function TimelineView({
     const firstCourse = courses[0];
     return (firstCourse?.domain as CourseDomain) || 'HSE';
   });
+
+  const [subModulesData, setSubModulesData] = useState<Record<string, {
+    instructor: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    classroom: string;
+    taOfficers?: string[];
+  }>>({
+    "OSI": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "HE": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "SS": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "FF": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "FA": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "HE (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "FF.SR (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    "SS (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+  });
+
+  const selectedCourse = courses.find(c => c.id === selCourseId);
+  const isOpitoBosiet = !!(selectedCourse && 
+    (selectedCourse.code?.toUpperCase() === 'OPITO T.BOSIET' || 
+     selectedCourse.title?.toUpperCase().includes('OPITO T.BOSIET') ||
+     selectedCourse.code?.toUpperCase().includes('T.BOSIET')) && 
+    selectedCourse.domain === 'OPITO/GWO');
 
   const handleCourseSelectChange = (courseIdVal: string) => {
     setSelCourseId(courseIdVal);
@@ -227,6 +333,27 @@ export default function TimelineView({
         setAssignDomain(selected.domain);
       }
     }
+    setSubModulesData({
+      "OSI": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "HE": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "SS": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "FF": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "FA": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "HE (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "FF.SR (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+      "SS (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
+    });
+  };
+
+  const getBaseInstructorName = (fullname: string): string => {
+    if (!fullname) return '';
+    return fullname.split(' (')[0].trim().toLowerCase();
+  };
+
+  const hasInstructorOverlap = (inst1: string, inst2: string): boolean => {
+    const norm1 = getBaseInstructorName(inst1);
+    const norm2 = getBaseInstructorName(inst2);
+    return norm1 && norm2 && (norm1 === norm2 || norm1.includes(norm2) || norm2.includes(norm1));
   };
 
   const handlePublishAssignment = (e: FormEvent) => {
@@ -250,7 +377,20 @@ export default function TimelineView({
     const newStart = new Date(assignStartDate);
     const newEnd = new Date(assignEndDate);
 
-    const isOnlineNew = assignMethod === 'Online';
+    const isOnlineNew = isOpitoBosiet ? false : (assignMethod === 'Online');
+
+    const currentSchedInstructors: string[] = [];
+    if (isOpitoBosiet) {
+      Object.keys(subModulesData).forEach(key => {
+        if (subModulesData[key].instructor) {
+          currentSchedInstructors.push(subModulesData[key].instructor);
+        }
+      });
+    } else {
+      if (assignInstructor) {
+        currentSchedInstructors.push(assignInstructor);
+      }
+    }
 
     sessions.forEach(existing => {
       const exStart = new Date(existing.startDate);
@@ -274,14 +414,45 @@ export default function TimelineView({
       }
 
       // 2. Instructor check:
-      if (existing.instructor === assignInstructor) {
+      const existingInstructors: string[] = [];
+      if (existing.subModules) {
+        Object.keys(existing.subModules).forEach(key => {
+          const val = existing.subModules?.[key];
+          if (val) {
+            if (typeof val === 'object' && val !== null) {
+              const obj = val as any;
+              if (obj.instructor) {
+                existingInstructors.push(obj.instructor);
+              }
+            } else if (typeof val === 'string') {
+              existingInstructors.push(val);
+            }
+          }
+        });
+      }
+      if (existing.instructor) {
+        existingInstructors.push(existing.instructor);
+      }
+
+      let conflictInstructorName = '';
+      const hasInstConflict = currentSchedInstructors.some(currInst => {
+        return existingInstructors.some(exInst => {
+          if (hasInstructorOverlap(currInst, exInst)) {
+            conflictInstructorName = currInst.split(' (')[0];
+            return true;
+          }
+          return false;
+        });
+      });
+
+      if (hasInstConflict) {
         const isSameCourseName = selCourseId === existing.courseId || assignCourseCode === code || assignCourseName === (matchedCourse ? matchedCourse.title : '');
         const isOneOrBothOnline = isOnlineNew || isOnlineExisting;
         if (isSameCourseName && isOneOrBothOnline) {
           // Rule 2: If both Online & Offline share same name and instructor, ignore instructor conflict
         } else {
           // Rule 3: booked for a different course at same time is a conflict
-          testConflicts.push(`Giảng viên "${assignInstructor.split(' (')[0]}" đã được phân bổ cho lớp "${code}" trong cùng khoảng thời gian.`);
+          testConflicts.push(`Giảng viên "${conflictInstructorName}" đã được phân bổ cho lớp "${code}" trong cùng khoảng thời gian.`);
         }
       }
 
@@ -345,28 +516,41 @@ export default function TimelineView({
       endDate: assignEndDate,
       startTime: assignStartTime,
       endTime: assignEndTime,
-      instructor: assignInstructor,
+      instructor: isOpitoBosiet 
+        ? Object.values(subModulesData).map((val: any) => val.instructor).filter(Boolean).join(', ') || 'Đội ngũ Giảng viên'
+        : assignInstructor,
       classroom: assignClassroom,
       maxCapacity: assignCapacity,
       enrolledIds: [],
       taOfficer: assignTa || undefined,
       tgOfficer: assignTg || undefined,
-      method: assignMethod,
+      method: isOpitoBosiet ? 'Offline' : assignMethod,
       notes: assignNote || undefined,
       domain: assignDomain,
+      subModules: isOpitoBosiet ? subModulesData : undefined,
     };
 
     if (onAddSession) {
       onAddSession(newSessionObject);
       setAssignFeedback({ 
         type: 'success', 
-        message: `Lớp học cho khóa ${assignCourseCode} đã được phân lịch thành công cho Giảng viên ${assignInstructor}` 
+        message: `Lớp học cho khóa ${assignCourseCode} đã được phân lịch thành công.` 
       });
       // Clear specific temporary fields
       setAssignTa('');
       setAssignTg('');
       setAssignNote('');
       setAssignMethod('Offline');
+      setSubModulesData({
+        "OSI": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
+        "HE": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
+        "SS": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
+        "FF": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
+        "FA": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
+        "HE (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
+        "FF.SR (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
+        "SS (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
+      });
       // Auto close the course assignment window after completion
       setIsAssignmentModalOpen(false);
     } else {
@@ -470,7 +654,7 @@ export default function TimelineView({
       const courseCode = matchedCourse ? matchedCourse.code : 'Lớp học';
       const courseTitle = matchedCourse ? matchedCourse.title : 'Khóa thực hành';
 
-      const isOnlineNew = assignMethod === 'Online';
+      const isOnlineNew = isOpitoBosiet ? false : (assignMethod === 'Online');
       const isOnlineExisting = ex.method === 'Online';
 
       // 1. Classroom check: Only if both courses are Offline
@@ -487,7 +671,51 @@ export default function TimelineView({
       }
 
       // 2. Instructor check:
-      if (ex.instructor === assignInstructor) {
+      const currentSchedInstructors: string[] = [];
+      if (isOpitoBosiet) {
+        Object.keys(subModulesData).forEach(key => {
+          if (subModulesData[key].instructor) {
+            currentSchedInstructors.push(subModulesData[key].instructor);
+          }
+        });
+      } else {
+        if (assignInstructor) {
+          currentSchedInstructors.push(assignInstructor);
+        }
+      }
+
+      const existingInstructors: string[] = [];
+      if (ex.subModules) {
+        Object.keys(ex.subModules).forEach(key => {
+          const val = ex.subModules?.[key];
+          if (val) {
+            if (typeof val === 'object' && val !== null) {
+              const obj = val as any;
+              if (obj.instructor) {
+                existingInstructors.push(obj.instructor);
+              }
+            } else if (typeof val === 'string') {
+              existingInstructors.push(val);
+            }
+          }
+        });
+      }
+      if (ex.instructor) {
+        existingInstructors.push(ex.instructor);
+      }
+
+      let conflictInstructorName = '';
+      const hasInstConflict = currentSchedInstructors.some(currInst => {
+        return existingInstructors.some(exInst => {
+          if (hasInstructorOverlap(currInst, exInst)) {
+            conflictInstructorName = currInst.split(' (')[0];
+            return true;
+          }
+          return false;
+        });
+      });
+
+      if (hasInstConflict) {
         const isSameCourseName = selCourseId === ex.courseId || assignCourseCode === courseCode || assignCourseName === courseTitle;
         const isOneOrBothOnline = isOnlineNew || isOnlineExisting;
         if (isSameCourseName && isOneOrBothOnline) {
@@ -496,7 +724,7 @@ export default function TimelineView({
           // Rule 3: booked for a different course at same time is a conflict
           activeConflicts.push({
             type: 'Giảng viên',
-            message: `Giảng viên "${assignInstructor.split(' (')[0]}" bị trùng giờ lên lớp khác.`,
+            message: `Giảng viên "${conflictInstructorName}" bị trùng giờ lên lớp khác.`,
             conflictingSession: ex,
             courseCode,
             courseTitle
@@ -652,20 +880,39 @@ export default function TimelineView({
                         title="Tự động xác định theo khóa học"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Hình thức học
-                      </label>
-                      <select
-                        id="assign-select-method"
-                        value={assignMethod}
-                        onChange={(e) => setAssignMethod(e.target.value as 'Online' | 'Offline')}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                      >
-                        <option value="Offline">Trực tiếp (Offline)</option>
-                        <option value="Online">Trực tuyến (Online)</option>
-                      </select>
-                    </div>
+                    {!isOpitoBosiet ? (
+                      <div>
+                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                          Hình thức học
+                        </label>
+                        <select
+                          id="assign-select-method"
+                          value={assignMethod}
+                          onChange={(e) => setAssignMethod(e.target.value as 'Online' | 'Offline')}
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                        >
+                          <option value="Offline">Trực tiếp (Offline)</option>
+                          <option value="Online">Trực tuyến (Online)</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                          Sĩ số lớp học
+                        </label>
+                        <input
+                          id="assign-input-capacity"
+                          type="number"
+                          required
+                          value={assignCapacity}
+                          onChange={(e) => setAssignCapacity(parseInt(e.target.value) || 20)}
+                          min={1}
+                          max={100}
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                          placeholder="Ví dụ: 25"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Date range from - to */}
@@ -700,26 +947,28 @@ export default function TimelineView({
 
                   {/* TA (Teaching Assisstance) & TG (Teacher Assistance) Fields */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Phụ giảng
-                      </label>
-                      <select
-                        id="assign-select-ta"
-                        value={assignTa}
-                        onChange={(e) => setAssignTa(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                      >
-                        <option value="">-- Trống --</option>
-                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
-                          <option key={m.id} value={m.name}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {!isOpitoBosiet && (
+                      <div>
+                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                          Phụ giảng
+                        </label>
+                        <select
+                          id="assign-select-ta"
+                          value={assignTa}
+                          onChange={(e) => setAssignTa(e.target.value)}
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                        >
+                          <option value="">-- Trống --</option>
+                          {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                            <option key={m.id} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
-                    <div>
+                    <div className={isOpitoBosiet ? "col-span-1 sm:col-span-2" : ""}>
                       <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Trợ giảng
                       </label>
@@ -741,89 +990,248 @@ export default function TimelineView({
 
                   {/* Instructor & Classroom Fields */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1 text-left">
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Giảng viên
-                      </label>
-                      <select
-                        id="assign-select-instructor"
-                        value={assignInstructor}
-                        onChange={(e) => setAssignInstructor(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                      >
-                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
-                          <option key={m.id} value={m.name}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Phòng học
-                      </label>
-                      <select
-                        id="assign-select-classroom"
-                        value={assignClassroom}
-                        onChange={(e) => setAssignClassroom(e.target.value)}
-                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                      >
-                        {CLASSROOMS.map(room => (
-                          <option key={room.id} value={room.name}>
-                            {room.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {!isOpitoBosiet ? (
+                      <>
+                        <div>
+                          <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                            Giảng viên
+                          </label>
+                          <select
+                            id="assign-select-instructor"
+                            value={assignInstructor}
+                            onChange={(e) => setAssignInstructor(e.target.value)}
+                            className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                          >
+                            {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                              <option key={m.id} value={m.name}>
+                                {m.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                            Phòng học
+                          </label>
+                          <select
+                            id="assign-select-classroom"
+                            value={assignClassroom}
+                            onChange={(e) => setAssignClassroom(e.target.value)}
+                            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                          >
+                            {activeClassrooms.map(room => (
+                              <option key={room.id} value={room.name}>
+                                {room.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="col-span-1 sm:col-span-2 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 space-y-4 mt-1 text-left">
+                        <div className="flex justify-between items-center pb-2 border-b border-emerald-100">
+                          <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">
+                            Phân bổ chi tiết môn học nhỏ (BOSIET)
+                          </span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
+                            8 Môn học nhỏ
+                          </span>
+                        </div>
+                        <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
+                          {["OSI", "HE", "SS", "FF", "FA", "HE (P)", "FF.SR (P)", "SS (P)"].map((subject) => {
+                            const data = subModulesData[subject] || { instructor: "", date: "", startTime: "08:05", endTime: "16:30", classroom: "", taOfficers: [] };
+                            return (
+                              <div key={subject} className="bg-white border border-slate-100 p-3 rounded-xl space-y-3 shadow-3xs">
+                                <div className="flex items-center justify-between border-b border-slate-50 pb-1.5">
+                                  <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-[#559b8c]"></span>
+                                    Môn: <span className="text-[#559b8c] font-black">{subject}</span>
+                                  </span>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {/* Giảng viên */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Giảng viên
+                                    </label>
+                                    <select
+                                      value={data.instructor}
+                                      onChange={(e) => setSubModulesData(prev => ({
+                                        ...prev,
+                                        [subject]: { ...prev[subject], instructor: e.target.value }
+                                      }))}
+                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                    >
+                                      <option value="">-- Chưa chọn --</option>
+                                      {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                        <option key={m.id} value={m.name}>
+                                          {m.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+ 
+                                  {/* Phòng học */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Phòng học
+                                    </label>
+                                    <select
+                                      value={data.classroom}
+                                      onChange={(e) => setSubModulesData(prev => ({
+                                        ...prev,
+                                        [subject]: { ...prev[subject], classroom: e.target.value }
+                                      }))}
+                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                    >
+                                      <option value="">-- Chọn phòng --</option>
+                                      {activeClassrooms.map(room => (
+                                        <option key={room.id} value={room.name}>
+                                          {room.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+ 
+                                  {/* Ngày học */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Ngày học
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={data.date}
+                                      onChange={(e) => setSubModulesData(prev => ({
+                                        ...prev,
+                                        [subject]: { ...prev[subject], date: e.target.value }
+                                      }))}
+                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                    />
+                                  </div>
+ 
+                                  {/* Thời gian */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Giờ học (Từ - Đến)
+                                    </label>
+                                    <div className="flex items-center gap-1.5">
+                                      <input
+                                        type="time"
+                                        value={data.startTime}
+                                        onChange={(e) => setSubModulesData(prev => ({
+                                          ...prev,
+                                          [subject]: { ...prev[subject], startTime: e.target.value }
+                                        }))}
+                                        className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                      />
+                                      <span className="text-[10px] text-slate-400 font-bold">-</span>
+                                      <input
+                                        type="time"
+                                        value={data.endTime}
+                                        onChange={(e) => setSubModulesData(prev => ({
+                                          ...prev,
+                                          [subject]: { ...prev[subject], endTime: e.target.value }
+                                        }))}
+                                        className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                      />
+                                    </div>
+                                  </div>
+ 
+                                  {/* Phụ giảng (Chỉ hiện cho môn có chữ (P)) */}
+                                  {subject.includes('(P)') && (
+                                    <div className="space-y-1.5 col-span-1 md:col-span-2 border-t border-slate-100 pt-2 px-0.5 mt-1">
+                                      <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                        Phụ giảng môn {subject} (Chọn nhiều)
+                                      </label>
+                                      <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg max-h-[110px] overflow-y-auto">
+                                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => {
+                                          const isSelected = (data.taOfficers || []).includes(m.name);
+                                          return (
+                                            <button
+                                              key={m.id}
+                                              type="button"
+                                              onClick={() => {
+                                                const current = data.taOfficers || [];
+                                                const next = isSelected 
+                                                  ? current.filter(name => name !== m.name)
+                                                  : [...current, m.name];
+                                                setSubModulesData(prev => ({
+                                                  ...prev,
+                                                  [subject]: { ...prev[subject], taOfficers: next }
+                                                }));
+                                              }}
+                                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                                                isSelected
+                                                  ? 'bg-[#559b8c] text-white shadow-3xs'
+                                                  : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-700'
+                                              }`}
+                                            >
+                                              {isSelected && <span className="mr-0.5 text-[9px]">✓</span>}
+                                              {m.name}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Duration Hours & Number of Learners */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-left">
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Giờ Lên lớp (Từ - Đến)
-                      </label>
-                      <div className="flex items-center gap-1 flex-row">
+                  {!isOpitoBosiet && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-left">
+                      <div>
+                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                          Giờ Lên lớp (Từ - Đến)
+                        </label>
+                        <div className="flex items-center gap-1 flex-row">
+                          <input
+                            id="assign-input-start-time"
+                            type="text"
+                            required
+                            value={assignStartTime}
+                            onChange={(e) => setAssignStartTime(e.target.value)}
+                            className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
+                            placeholder="08:00"
+                          />
+                          <span className="text-slate-400 font-bold px-2 shrink-0">-</span>
+                          <input
+                            id="assign-input-end-time"
+                            type="text"
+                            required
+                            value={assignEndTime}
+                            onChange={(e) => setAssignEndTime(e.target.value)}
+                            className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
+                            placeholder="16:30"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                          Sĩ số
+                        </label>
                         <input
-                          id="assign-input-start-time"
-                          type="text"
+                          id="assign-input-capacity"
+                          type="number"
                           required
-                          value={assignStartTime}
-                          onChange={(e) => setAssignStartTime(e.target.value)}
-                          className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
-                          placeholder="08:00"
-                        />
-                        <span className="text-slate-400 font-bold px-2 shrink-0">-</span>
-                        <input
-                          id="assign-input-end-time"
-                          type="text"
-                          required
-                          value={assignEndTime}
-                          onChange={(e) => setAssignEndTime(e.target.value)}
-                          className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
-                          placeholder="16:30"
+                          value={assignCapacity}
+                          onChange={(e) => setAssignCapacity(parseInt(e.target.value) || 20)}
+                          min={1}
+                          max={100}
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                          placeholder="Ví dụ: 25"
                         />
                       </div>
                     </div>
-
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Sĩ số
-                      </label>
-                      <input
-                        id="assign-input-capacity"
-                        type="number"
-                        required
-                        value={assignCapacity}
-                        onChange={(e) => setAssignCapacity(parseInt(e.target.value) || 20)}
-                        min={1}
-                        max={100}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                        placeholder="Ví dụ: 25"
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   {/* Feedback Message */}
                   {assignFeedback && (
@@ -1424,8 +1832,8 @@ export default function TimelineView({
                     </span>
                   </div>
 
-                  {/* Date Range */}
-                  <div className="grid grid-cols-2 gap-3.5 text-left">
+                  {/* Date Range & Capacity */}
+                  <div className={`grid ${isSessionOpitoBosiet ? 'grid-cols-3' : 'grid-cols-2'} gap-3.5 text-left`}>
                     <div>
                       <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Ngày bắt đầu</label>
                       <input 
@@ -1444,80 +1852,218 @@ export default function TimelineView({
                         className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2 outline-none font-bold font-mono focus:ring-1 focus:ring-[#559b8c]"
                       />
                     </div>
+                    {isSessionOpitoBosiet && (
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Sĩ số tối đa</label>
+                        <input 
+                          type="number"
+                          value={editMaxCapacity}
+                          onChange={(e) => setEditMaxCapacity(parseInt(e.target.value) || 20)}
+                          min={1}
+                          max={100}
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-850 focus:ring-1 focus:ring-[#559b8c]"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Timing Selection */}
-                  <div className="grid grid-cols-2 gap-3.5 text-left">
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Giờ bắt đầu</label>
-                      <input 
-                        type="text"
-                        value={editStartTime}
-                        onChange={(e) => setEditStartTime(e.target.value)}
-                        placeholder="09:00"
-                        className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2.5 outline-none font-bold font-mono text-center focus:ring-1 focus:ring-[#559b8c]"
-                      />
+                  {!isSessionOpitoBosiet && (
+                    <div className="grid grid-cols-2 gap-3.5 text-left">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Giờ bắt đầu</label>
+                        <input 
+                          type="text"
+                          value={editStartTime}
+                          onChange={(e) => setEditStartTime(e.target.value)}
+                          placeholder="09:00"
+                          className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2.5 outline-none font-bold font-mono text-center focus:ring-1 focus:ring-[#559b8c]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Giờ kết thúc</label>
+                        <input 
+                          type="text"
+                          value={editEndTime}
+                          onChange={(e) => setEditEndTime(e.target.value)}
+                          placeholder="16:00"
+                          className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2.5 outline-none font-bold font-mono text-center focus:ring-1 focus:ring-[#559b8c]"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Giờ kết thúc</label>
-                      <input 
-                        type="text"
-                        value={editEndTime}
-                        onChange={(e) => setEditEndTime(e.target.value)}
-                        placeholder="16:00"
-                        className="w-full text-xs bg-slate-55 border border-slate-200 rounded-lg p-2.5 outline-none font-bold font-mono text-center focus:ring-1 focus:ring-[#559b8c]"
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   {/* Instructor & Classroom */}
                   <div className="grid grid-cols-2 gap-3.5 text-left font-sans">
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Giảng viên</label>
-                      <select 
-                        value={editInstructor}
-                        onChange={(e) => setEditInstructor(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                      >
-                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
-                          <option key={m.id} value={`${m.name} (${m.position || 'Giảng viên'})`}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Phòng Đào tạo</label>
-                      <select 
-                        value={editClassroom}
-                        onChange={(e) => setEditClassroom(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                      >
-                        {CLASSROOMS.map(room => (
-                          <option key={room.id} value={room.name}>
-                            {room.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {!isSessionOpitoBosiet ? (
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Giảng viên</label>
+                        <select 
+                          value={editInstructor}
+                          onChange={(e) => setEditInstructor(e.target.value)}
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                        >
+                          {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                            <option key={m.id} value={`${m.name} (${m.position || 'Giảng viên'})`}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="col-span-2 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 space-y-4 mt-1 text-left">
+                        <div className="flex justify-between items-center pb-2 border-b border-emerald-100">
+                          <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">
+                            Chi tiết phân bổ môn học nhỏ (BOSIET)
+                          </span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
+                            8 Môn học nhỏ
+                          </span>
+                        </div>
+                        <div className="space-y-4 max-h-[355px] overflow-y-auto pr-1">
+                          {["OSI", "HE", "SS", "FF", "FA", "HE (P)", "FF.SR (P)", "SS (P)"].map((subject) => {
+                            const data = editSubModules[subject] || { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" };
+                            return (
+                              <div key={subject} className="bg-white border border-slate-100 p-3 rounded-xl space-y-3 shadow-3xs">
+                                <div className="flex items-center justify-between border-b border-slate-50 pb-1.5">
+                                  <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-[#559b8c]"></span>
+                                    Môn: <span className="text-[#559b8c] font-black">{subject}</span>
+                                  </span>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {/* Giảng viên */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Giảng viên
+                                    </label>
+                                    <select
+                                      value={data.instructor}
+                                      onChange={(e) => setEditSubModules(prev => ({
+                                        ...prev,
+                                        [subject]: { ...prev[subject], instructor: e.target.value }
+                                      }))}
+                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                    >
+                                      <option value="">-- Chưa chọn --</option>
+                                      {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                        <option key={m.id} value={m.name}>
+                                          {m.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {/* Phòng học */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Phòng học
+                                    </label>
+                                    <select
+                                      value={data.classroom}
+                                      onChange={(e) => setEditSubModules(prev => ({
+                                        ...prev,
+                                        [subject]: { ...prev[subject], classroom: e.target.value }
+                                      }))}
+                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                    >
+                                      <option value="">-- Chọn phòng --</option>
+                                      {activeClassrooms.map(room => (
+                                        <option key={room.id} value={room.name}>
+                                          {room.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {/* Ngày học */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Ngày học
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={data.date}
+                                      onChange={(e) => setEditSubModules(prev => ({
+                                        ...prev,
+                                        [subject]: { ...prev[subject], date: e.target.value }
+                                      }))}
+                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                    />
+                                  </div>
+
+                                  {/* Thời gian */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Giờ học (Từ - Đến)
+                                    </label>
+                                    <div className="flex items-center gap-1.5">
+                                      <input
+                                        type="time"
+                                        value={data.startTime}
+                                        onChange={(e) => setEditSubModules(prev => ({
+                                          ...prev,
+                                          [subject]: { ...prev[subject], startTime: e.target.value }
+                                        }))}
+                                        className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                      />
+                                      <span className="text-[10px] text-slate-400 font-bold">-</span>
+                                      <input
+                                        type="time"
+                                        value={data.endTime}
+                                        onChange={(e) => setEditSubModules(prev => ({
+                                          ...prev,
+                                          [subject]: { ...prev[subject], endTime: e.target.value }
+                                        }))}
+                                        className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {!isSessionOpitoBosiet && (
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Phòng Đào tạo</label>
+                        <select 
+                          value={editClassroom}
+                          onChange={(e) => setEditClassroom(e.target.value)}
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                        >
+                          {activeClassrooms.map(room => (
+                            <option key={room.id} value={room.name}>
+                              {room.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {/* Mode / Method Selection */}
-                  <div className="text-left font-sans">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Phương thức Đào tạo</label>
-                    <select 
-                      value={editMethod}
-                      onChange={(e) => setEditMethod(e.target.value as 'Online' | 'Offline')}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                    >
-                      <option value="Offline">Học Trực tiếp (Offline)</option>
-                      <option value="Online">Học Trực tuyến (Online)</option>
-                    </select>
-                  </div>
+                  {!isSessionOpitoBosiet && (
+                    <div className="text-left font-sans">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Phương thức Đào tạo</label>
+                      <select 
+                        value={editMethod}
+                        onChange={(e) => setEditMethod(e.target.value as 'Online' | 'Offline')}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                      >
+                        <option value="Offline">Học Trực tiếp (Offline)</option>
+                        <option value="Online">Học Trực tuyến (Online)</option>
+                      </select>
+                    </div>
+                  )}
 
                   {/* TG and TA officers assigned */}
                   <div className="grid grid-cols-2 gap-3.5 text-left font-sans">
-                    <div>
+                    <div className={isSessionOpitoBosiet ? "col-span-2" : ""}>
                       <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Trợ giảng</label>
                       <input 
                         type="text"
@@ -1527,30 +2073,34 @@ export default function TimelineView({
                         className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Phụ giảng</label>
-                      <input 
-                        type="text"
-                        value={editTaOfficer}
-                        onChange={(e) => setEditTaOfficer(e.target.value)}
-                        placeholder="Chưa chỉ định"
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                      />
-                    </div>
+                    {!isSessionOpitoBosiet && (
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Phụ giảng</label>
+                        <input 
+                          type="text"
+                          value={editTaOfficer}
+                          onChange={(e) => setEditTaOfficer(e.target.value)}
+                          placeholder="Chưa chỉ định"
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Capacity / Number of Learners */}
-                  <div className="text-left font-sans">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Sĩ số tối đa lớp học</label>
-                    <input 
-                      type="number"
-                      value={editMaxCapacity}
-                      onChange={(e) => setEditMaxCapacity(parseInt(e.target.value) || 20)}
-                      min={1}
-                      max={100}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                    />
-                  </div>
+                  {!isSessionOpitoBosiet && (
+                    <div className="text-left font-sans">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Sĩ số tối đa lớp học</label>
+                      <input 
+                        type="number"
+                        value={editMaxCapacity}
+                        onChange={(e) => setEditMaxCapacity(parseInt(e.target.value) || 20)}
+                        min={1}
+                        max={100}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                      />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-left space-y-4 animate-fade-in font-sans">
@@ -1597,19 +2147,99 @@ export default function TimelineView({
 
                   {/* Instructor and Method */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Giảng viên phụ trách</span>
+                    <div className="space-y-0.5 text-left">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Giảng viên / Đội ngũ</span>
                       <span id="popup-course-instructor" className="text-xs font-black text-slate-750 block truncate" title={popupCourseSession.session.instructor}>
                         {popupCourseSession.session.instructor.split(' (')[0]}
                       </span>
                     </div>
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hình thức học</span>
-                      <span id="popup-course-method" className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md inline-block font-mono">
-                        {popupCourseSession.session.method === 'Online' ? 'Trực tuyến (Online)' : 'Trực tiếp (Offline)'}
-                      </span>
-                    </div>
+                    {!isSessionOpitoBosiet && (
+                      <div className="space-y-0.5 text-left">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hình thức học</span>
+                        <span id="popup-course-method" className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md inline-block font-mono">
+                          {popupCourseSession.session.method === 'Online' ? 'Trực tuyến (Online)' : 'Trực tiếp (Offline)'}
+                        </span>
+                      </div>
+                    )}
                   </div>
+
+                  {/* For OPITO BOSIET, display sub-modules instructors list in View Mode */}
+                  {isSessionOpitoBosiet && (
+                    <div className="space-y-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 mt-1 text-left animate-fade-in font-sans">
+                      <div className="flex justify-between items-center border-b border-emerald-100 pb-1.5 mb-2">
+                        <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
+                          Chi tiết học phần nhỏ (BOSIET)
+                        </span>
+                        <span className="text-[9px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                          8 Môn học nhỏ
+                        </span>
+                      </div>
+                      <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                        {["OSI", "HE", "SS", "FF", "FA", "HE (P)", "FF.SR (P)", "SS (P)"].map((subject) => {
+                          const val = popupCourseSession.session.subModules?.[subject];
+                          let instructor = "Chưa phân công";
+                          let date = "";
+                          let timeRange = "08:00 - 16:30";
+                          let classroom = "";
+                          let taOfficers: string[] = [];
+
+                          if (val) {
+                            if (typeof val === 'object') {
+                              instructor = val.instructor || "Chưa phân công";
+                              if (val.date) {
+                                // Format to dd/mm/yyyy
+                                const dParts = val.date.split('-');
+                                date = dParts.length === 3 ? `${dParts[2]}/${dParts[1]}/${dParts[0]}` : val.date;
+                              }
+                              if (val.startTime && val.endTime) {
+                                timeRange = `${val.startTime} - ${val.endTime}`;
+                              }
+                              classroom = val.classroom || "";
+                              taOfficers = (val as any).taOfficers || [];
+                            } else if (typeof val === 'string') {
+                              instructor = val;
+                            }
+                          }
+
+                          return (
+                            <div key={subject} className="bg-white border border-slate-100 rounded-lg p-2 space-y-1.5 shadow-3xs">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-extrabold text-slate-800">Môn {subject}</span>
+                                <span className="font-bold text-[#559b8c]" title={instructor}>{instructor}</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-500 font-medium">
+                                <div className="flex items-center gap-1">
+                                  <span className="h-1 w-1 bg-slate-300 rounded-full"></span>
+                                  <span>Lớp: {classroom || popupCourseSession.session.classroom || "Chưa chọn"}</span>
+                                </div>
+                                <div className="flex items-center gap-1 justify-end">
+                                  <span>{timeRange}</span>
+                                </div>
+                                {date && (
+                                  <div className="col-span-2 flex items-center gap-1 py-0.5 mt-0.5 border-t border-slate-50 text-[9px] font-bold text-slate-400">
+                                    <span>Ngày học: </span>
+                                    <span className="text-slate-600">{date}</span>
+                                  </div>
+                                )}
+                                {taOfficers && taOfficers.length > 0 && (
+                                  <div className="col-span-2 flex items-center gap-1 flex-wrap mt-1 pt-1 border-t border-dashed border-slate-100 text-[10px]">
+                                    <span className="font-bold text-slate-450">Phụ giảng:</span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {taOfficers.map((taName, idx) => (
+                                        <span key={idx} className="bg-amber-50 text-amber-805 text-[9px] px-1.5 py-0.5 rounded font-black border border-amber-100/50">
+                                          {taName}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Classroom Details */}
                   <div className="space-y-0.5 pt-1">

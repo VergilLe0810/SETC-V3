@@ -781,114 +781,134 @@ export default function MembershipInformation({
               )}
             </div>
 
-            {/* Grid of Classrooms */}
-            <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-left">
-              {activeClassrooms.map((room) => {
-                // Determine layout styles/facilities based on room id
-                let facilities: string[] = [];
-                let colorTheme = 'emerald';
-                let iconText = '🏢';
-                
-                if (room.id === 'room-101') {
-                  facilities = ['Dây đai An toàn', 'Giàn giáo Tiếp cận Trên cao', 'Bảng Quy chuẩn HSE', 'Hệ thống Âm thanh'];
-                  colorTheme = 'emerald';
-                  iconText = '🧪';
-                } else if (room.id === 'room-102') {
-                  facilities = ['Mạng Cảm biến Rủi ro', 'Rào cản Tiếng ồn', 'Bảng trắng Tương tác Kỹ thuật số', 'Giả lập Điều kiện Khí hậu'];
-                  colorTheme = 'indigo';
-                  iconText = '🌡️';
-                } else if (room.id === 'room-ex') {
-                  facilities = ['Hệ thống Đánh lửa Thử nghiệm', 'Mạng lưới Họng nước cứu hỏa', 'Bình chữa cháy Bột khô', 'Kệ mặt nạ Phòng khí độc'];
-                  colorTheme = 'rose';
-                  iconText = '🔥';
-                } else if (room.id === 'room-conf') {
-                  facilities = ['Cửa thép Kín khí Khẩn cấp', 'Thiết bị Đo Khí O2', 'Móc treo Davit & Winch', 'Hệ thống Đèn cứu nạn'];
-                  colorTheme = 'amber';
-                  iconText = '⚓';
-                } else if (room.id === 'room-eco') {
-                  facilities = ['Máy đo quang phổ Đất & Chất lỏng', 'Phân tích Chất lượng Nước sạch', 'Kính hiển vi Kỹ thuật số', 'Cân phân tích Độ chia Nhỏ'];
-                  colorTheme = 'teal';
-                  iconText = '🌿';
-                } else {
-                  facilities = ['Trang thiết bị đào tạo tự chọn', 'Bảng Quy chuẩn HSE', 'Hệ thống hỗ trợ giảng dạy'];
-                  colorTheme = 'emerald';
-                  iconText = '🏫';
-                }
+             {/* Table of Classrooms */}
+             <div className="p-0 overflow-x-auto text-left">
+               {activeClassrooms.length === 0 ? (
+                 <div className="p-12 text-center text-slate-450 text-xs font-semibold">
+                   Chưa có phòng học hay khu thực hành nào được đăng ký.
+                 </div>
+               ) : (
+                 <table className="w-full text-left border-collapse min-w-[700px]">
+                   <thead>
+                     <tr className="border-b border-slate-100 text-[10px] font-black text-slate-450 uppercase bg-slate-50/50">
+                       <th className="px-5 py-3">Phòng Học / Khu Thực Hành</th>
+                       <th className="px-5 py-3">Sức Chứa (Học Viên)</th>
+                       <th className="px-5 py-3">Tòa Nhà / Vị Trí</th>
+                       <th className="px-5 py-3">Trang Thiết Bị & Vật Tư</th>
+                       <th className="px-5 py-3">Trạng Thái</th>
+                       {isAuthorized && <th className="px-5 py-3 text-right">Thao Tác</th>}
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-100">
+                     {activeClassrooms.map((room) => {
+                       // Determine layout styles/facilities based on room id
+                       let facilities: string[] = [];
+                       let colorTheme = 'emerald';
+                       let iconText = '🏢';
+                       
+                       if (room.id === 'room-101') {
+                         facilities = ['Dây đai An toàn', 'Giàn giáo Tiếp cận Trên cao', 'Bảng Quy chuẩn HSE', 'Hệ thống Âm thanh'];
+                         colorTheme = 'emerald';
+                         iconText = '🧪';
+                       } else if (room.id === 'room-102') {
+                         facilities = ['Mạng Cảm biến Rủi ro', 'Rào cản Tiếng ồn', 'Bảng trắng Tương tác Kỹ thuật số', 'Giả lập Điều kiện Khí hậu'];
+                         colorTheme = 'indigo';
+                         iconText = '🌡️';
+                       } else if (room.id === 'room-ex') {
+                         facilities = ['Hệ thống Đánh lửa Thử nghiệm', 'Mạng lưới Họng nước cứu hỏa', 'Bình chữa cháy Bột khô', 'Kệ mặt nạ Phòng khí độc'];
+                         colorTheme = 'rose';
+                         iconText = '🔥';
+                       } else if (room.id === 'room-conf') {
+                         facilities = ['Cửa thép Kín khí Khẩn cấp', 'Thiết bị Đo Khí O2', 'Móc treo Davit & Winch', 'Hệ thống Đèn cứu nạn'];
+                         colorTheme = 'amber';
+                         iconText = '⚓';
+                       } else if (room.id === 'room-eco') {
+                         facilities = ['Máy đo quang phổ Đất & Chất lỏng', 'Phân tích Chất lượng Nước sạch', 'Kính hiển vi Kỹ thuật số', 'Cân phân tích Độ chia Nhỏ'];
+                         colorTheme = 'teal';
+                         iconText = '🌿';
+                       } else {
+                         facilities = ['Trang thiết bị đào tạo tự chọn', 'Bảng Quy chuẩn HSE', 'Hệ thống hỗ trợ giảng dạy'];
+                         colorTheme = 'emerald';
+                         iconText = '🏫';
+                       }
 
-                return (
-                  <div key={room.id} className="bg-white border border-slate-150 rounded-xl p-4.5 hover:shadow-md hover:border-slate-300 transition-all duration-200 flex flex-col justify-between">
-                    <div>
-                      {/* Icon and Stats header */}
-                      <div className="flex items-center justify-between mb-3.5">
-                        <span className="text-2xl">{iconText}</span>
-                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
-                          colorTheme === 'rose' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                          colorTheme === 'indigo' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-                          colorTheme === 'amber' ? 'bg-amber-50 text-amber-555 border border-amber-200' :
-                          colorTheme === 'teal' ? 'bg-teal-50 text-teal-700 border border-teal-200' :
-                          'bg-emerald-50 text-emerald-700 border border-emerald-250'
-                        }`}>
-                          {room.building}
-                        </span>
-                      </div>
-
-                      <h4 className="text-xs font-extrabold text-slate-850 truncate">{room.name}</h4>
-                      <p className="text-[10px] text-slate-450 mt-0.5 flex items-center gap-1 flex-row">
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300 shrink-0"></span>
-                        <span className="truncate">{room.building}</span>
-                      </p>
-
-                      <div className="mt-4 space-y-1.5">
-                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Trang thiết bị & Vật tư:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {facilities.map((fac, idx) => (
-                            <span key={idx} className="bg-slate-55 border border-slate-150 text-slate-600 text-[9px] px-1.5 py-0.5 rounded font-medium">
-                              {fac}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between flex-row">
-                      <div className="flex flex-col">
-                        <span className="text-[8px] text-slate-450 uppercase font-black">Giới hạn Sức chứa</span>
-                        <span className="text-xs font-black text-slate-850 font-mono">{room.capacity} học viên</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-row">
-                        {isAuthorized && (
-                          <div className="flex items-center gap-1.5 mr-1 text-[#549B8C]">
-                            <button
-                              type="button"
-                              onClick={() => startEditClassroom(room)}
-                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-[#549B8C] transition-colors cursor-pointer"
-                              title="Sửa phòng học"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setClassroomToDelete(room)}
-                              className="p-1 hover:bg-rose-50 rounded text-slate-450 hover:text-rose-600 transition-colors cursor-pointer"
-                              title="Xóa phòng học"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        )}
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-                        <span className="text-[10px] text-emerald-850 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50">
-                          Hoạt động
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    )}
+                       return (
+                         <tr key={room.id} className="hover:bg-slate-50/40 transition-colors">
+                           <td className="px-5 py-3.5">
+                             <div className="flex items-center gap-3">
+                               <span className="text-xl shrink-0">{iconText}</span>
+                               <div>
+                                 <div className="text-xs font-bold text-slate-800">{room.name}</div>
+                                 <div className="text-[9px] text-slate-400 mt-0.5 font-mono">ID: {room.id}</div>
+                               </div>
+                             </div>
+                           </td>
+                           <td className="px-5 py-3.5">
+                             <div className="flex flex-col">
+                               <span className="text-xs font-black text-slate-800 font-mono">{room.capacity}</span>
+                               <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Học viên</span>
+                             </div>
+                           </td>
+                           <td className="px-5 py-3.5">
+                             <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                               colorTheme === 'rose' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                               colorTheme === 'indigo' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
+                               colorTheme === 'amber' ? 'bg-amber-50 text-amber-800 border border-amber-100' :
+                               colorTheme === 'teal' ? 'bg-teal-50 text-teal-700 border border-teal-100' :
+                               'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                             }`}>
+                               {room.building}
+                             </span>
+                           </td>
+                           <td className="px-5 py-3.5 max-w-[280px]">
+                             <div className="flex flex-wrap gap-1">
+                               {facilities.map((fac, idx) => (
+                                 <span key={idx} className="bg-slate-55 border border-slate-150 text-slate-600 text-[9px] px-1.5 py-0.5 rounded font-medium">
+                                   {fac}
+                                 </span>
+                               ))}
+                             </div>
+                           </td>
+                           <td className="px-5 py-3.5">
+                             <div className="flex items-center gap-1.5">
+                               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                               <span className="text-[10px] text-emerald-850 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50">
+                                 Hoạt động
+                               </span>
+                             </div>
+                           </td>
+                           {isAuthorized && (
+                             <td className="px-5 py-3.5 text-right">
+                               <div className="flex items-center justify-end gap-2.5 text-[#549B8C]">
+                                 <button
+                                   type="button"
+                                   onClick={() => startEditClassroom(room)}
+                                   className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-[#549B8C] transition-colors cursor-pointer"
+                                   title="Sửa phòng học"
+                                 >
+                                   <Pencil className="h-3 w-3" />
+                                 </button>
+                                 <button
+                                   type="button"
+                                   onClick={() => setClassroomToDelete(room)}
+                                   className="p-1 hover:bg-rose-50 rounded text-slate-450 hover:text-rose-600 transition-colors cursor-pointer"
+                                   title="Xóa phòng học"
+                                 >
+                                   <Trash2 className="h-3 w-3" />
+                                 </button>
+                               </div>
+                             </td>
+                           )}
+                         </tr>
+                       );
+                     })}
+                   </tbody>
+                 </table>
+               )}
+             </div>
+           </div>
+         </div>
+       )}
 
       {/* Pop-up Window Modal for Register/Update */}
       <AnimatePresence>

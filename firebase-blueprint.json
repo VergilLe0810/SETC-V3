@@ -85,6 +85,18 @@
         "instructor": { "type": "string" }
       },
       "required": ["id", "assignedBy", "assignedTo", "title", "description", "dueDate", "status", "createdAt"]
+    },
+    "Classroom": {
+      "title": "Classroom",
+      "description": "Academies classroom, simulation labs or outdoor training sites",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "capacity": { "type": "integer" },
+        "building": { "type": "string" }
+      },
+      "required": ["id", "name", "capacity", "building"]
     }
   },
   "firestore": {
@@ -103,6 +115,10 @@
     "/tasks/{taskId}": {
       "schema": "Task",
       "description": "Task and system notifications assigned to personnel"
+    },
+    "/classrooms/{classroomId}": {
+      "schema": "Classroom",
+      "description": "Academies classrooms and simulators dynamic registry"
     }
   }
 }

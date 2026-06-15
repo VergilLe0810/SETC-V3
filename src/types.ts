@@ -46,6 +46,14 @@ export interface CourseSession {
   method?: 'Online' | 'Offline';
   notes?: string;
   domain?: CourseDomain;
+  subModules?: Record<string, string | {
+    instructor: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    classroom: string;
+    taOfficers?: string[];
+  }>;
 }
 
 export interface UserProgress {
