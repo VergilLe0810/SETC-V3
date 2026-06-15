@@ -24,6 +24,7 @@ interface TimelineViewProps {
   onAddSession?: (newSession: CourseSession) => void;
   onRemoveSession?: (sessionId: string) => void;
   onUpdateSession?: (updatedSession: CourseSession) => void;
+  onClearAllSessions?: () => void;
   currentUserEmail: string;
   members: Member[];
 }
@@ -87,6 +88,7 @@ export default function TimelineView({
   onAddSession,
   onRemoveSession,
   onUpdateSession,
+  onClearAllSessions,
   currentUserEmail,
   members
 }: TimelineViewProps) {
@@ -976,28 +978,42 @@ export default function TimelineView({
             Biểu đồ Lịch Đào tạo
           </h2>
           {hasAssignmentAccess && (
-            <button
-              id="open-courses-assignment-btn"
-              type="button"
-              onClick={() => {
-                setIsAssignmentModalOpen(true);
-                // Prefill course structures dynamically
-                if (courses.length > 0) {
-                  const first = courses.find(c => c.id === selCourseId) || courses[0];
-                  setSelCourseId(first.id);
-                  setAssignCourseCode(first.code);
-                  setAssignCourseName(first.title);
-                  if (first.domain) {
-                    setAssignDomain(first.domain as CourseDomain);
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                id="open-courses-assignment-btn"
+                type="button"
+                onClick={() => {
+                  setIsAssignmentModalOpen(true);
+                  // Prefill course structures dynamically
+                  if (courses.length > 0) {
+                    const first = courses.find(c => c.id === selCourseId) || courses[0];
+                    setSelCourseId(first.id);
+                    setAssignCourseCode(first.code);
+                    setAssignCourseName(first.title);
+                    if (first.domain) {
+                      setAssignDomain(first.domain as CourseDomain);
+                    }
                   }
-                }
-              }}
-              className="inline-flex items-center gap-1.5 bg-[#559b8c] hover:bg-[#3f766a] text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-3xs hover:shadow-2xs cursor-pointer transition-all active:scale-[0.98] select-none flex-row"
-              title="Mở bảng phân bổ lịch học khóa đào tạo"
-            >
-              <Calendar className="h-3.5 w-3.5 shrink-0" />
-              <span>Đăng ký Khóa học</span>
-            </button>
+                }}
+                className="inline-flex items-center gap-1.5 bg-[#559b8c] hover:bg-[#3f766a] text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-3xs hover:shadow-2xs cursor-pointer transition-all active:scale-[0.98] select-none flex-row"
+                title="Mở bảng phân bổ lịch học khóa đào tạo"
+              >
+                <Calendar className="h-3.5 w-3.5 shrink-0" />
+                <span>Đăng ký Khóa học</span>
+              </button>
+
+              {onClearAllSessions && sessions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onClearAllSessions}
+                  className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-3xs hover:shadow-2xs cursor-pointer transition-all active:scale-[0.98] select-none flex-row border-none hover:opacity-90"
+                  title="Xóa vĩnh viễn toàn bộ lịch học đang có"
+                >
+                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                  <span>Xóa toàn bộ lịch học ({sessions.length})</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
 

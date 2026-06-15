@@ -46,6 +46,14 @@ import { collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch } from 'fire
 
 const DEFAULT_TASKS: Task[] = [];
 
+const getInitials = (name: string): string => {
+  if (!name || typeof name !== 'string') return '';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
+
 export default function App() {
   const [courses, setCourses] = useState<Course[]>(INITIAL_COURSES);
   const [sessions, setSessions] = useState<CourseSession[]>(INITIAL_SESSIONS);
@@ -347,7 +355,7 @@ export default function App() {
               <div class="flex flex-col sm:flex-row items-center gap-6 pb-6 border-b border-slate-100 pr-20">
                 <div class="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center font-extrabold text-xl relative border border-emerald-500/15 shrink-0 shadow-2xs overflow-hidden">
                   <img id="view-avatar-img" class="w-full h-full object-cover ${activeMember.avatar ? '' : 'hidden'}" src="${activeMember.avatar || ''}" alt="" />
-                  <span id="view-avatar" class="${activeMember.avatar ? 'hidden' : ''}">${memberName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}</span>
+                  <span id="view-avatar" class="${activeMember.avatar ? 'hidden' : ''}">${getInitials(memberName)}</span>
                   <span class="absolute bottom-1 right-1 h-3 w-3 rounded-full bg-emerald-500 border border-white"></span>
                 </div>
                 
@@ -396,7 +404,7 @@ export default function App() {
                     <div class="relative w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center font-extrabold text-sm border border-emerald-500/15 shrink-0 overflow-hidden shadow-2xs">
                       <img id="edit-avatar-preview" class="w-full h-full object-cover ${activeMember.avatar ? '' : 'hidden'}" src="${activeMember.avatar || ''}" alt="" />
                       <span id="edit-avatar-placeholder" class="${activeMember.avatar ? 'hidden' : ''}">
-                        ${memberName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        ${getInitials(memberName)}
                       </span>
                     </div>
                     <div class="space-y-1">
@@ -574,7 +582,8 @@ export default function App() {
               } else {
                 viewImg.src = '';
                 viewImg.classList.add('hidden');
-                viewTxt.textContent = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                const nameParts = name.trim().split(/\s+/).filter(Boolean);
+                viewTxt.textContent = nameParts.length === 0 ? "" : (nameParts.length === 1 ? nameParts[0][0] : nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
                 viewTxt.classList.remove('hidden');
               }
 
@@ -796,6 +805,27 @@ export default function App() {
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.DELETE, `sessions/${sessionId}`);
+    }
+  };
+
+  // Clear all sessions
+  const handleClearAllSessions = async () => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa TOÀN BỘ lịch học đang có không? Hành động này sẽ xóa tất cả các lớp học và các nhiệm vụ liên quan vĩnh viễn.")) {
+      return;
+    }
+    try {
+      for (const s of sessions) {
+        await deleteDoc(doc(db, "sessions", s.id));
+      }
+      for (const t of tasks) {
+        if (t.sessionId) {
+          await deleteDoc(doc(db, "tasks", t.id));
+        }
+      }
+      setSelectedCourse(null);
+      setSelectedSession(null);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, "sessions/all");
     }
   };
 
@@ -1338,7 +1368,7 @@ export default function App() {
                     {currentMember?.avatar ? (
                       <img src={currentMember.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                     ) : (
-                      officerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                      getInitials(officerName)
                     )}
                   </div>
                   <div className="flex flex-col leading-tight">
@@ -1392,6 +1422,7 @@ export default function App() {
                 onAddSession={handleAddSession}
                 onRemoveSession={handleRemoveSession}
                 onUpdateSession={handleUpdateSession}
+                onClearAllSessions={handleClearAllSessions}
                 currentUserEmail={userEmail}
                 members={members}
               />

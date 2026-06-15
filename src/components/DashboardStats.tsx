@@ -854,7 +854,7 @@ export default function DashboardStats({
           title="Click để xem chi tiết các công việc đang diễn ra"
         >
           <div className="min-w-0 flex-1">
-            <span className="text-xs font-bold text-emerald-800 uppercase block tracking-tight">Công việc đang diễn ra</span>
+            <span className="text-xs font-bold text-emerald-800 uppercase block tracking-tight">Đang diễn ra</span>
             <h3 className="text-2xl font-extrabold text-emerald-950 mt-1">{realTimeTodayCourses.length}</h3>
           </div>
           <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-600 shrink-0 ml-2">
@@ -919,7 +919,7 @@ export default function DashboardStats({
             <div className="flex items-center justify-between gap-1 mb-2">
               <div className="flex items-center gap-1.5 min-w-0">
                 <Cake className="h-4 w-4 text-rose-500 shrink-0" />
-                <span className="text-xs font-bold text-rose-900 uppercase tracking-tight truncate">Sinh nhật ({VI_MONTH_NAMES[activeMonth] || activeMonth}/{activeYear})</span>
+                <span className="text-xs font-bold text-rose-900 uppercase tracking-tight truncate">Sinh nhật</span>
                 <span className="text-[9.5px] px-1.5 py-0.2 rounded-full font-bold bg-rose-100 text-rose-800 shrink-0">
                   {realTimeBirthdayMembers.length}
                 </span>

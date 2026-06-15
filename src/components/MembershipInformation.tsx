@@ -23,7 +23,9 @@ import {
   Copy,
   Check,
   ChevronRight,
-  Plus
+  Plus,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 interface MembershipInformationProps {
@@ -88,6 +90,23 @@ const isValidInputDateFormat = (inputVal: string): boolean => {
   if (year < 1900 || year > 2100) return false;
   
   return true;
+};
+
+// Helper to translate level strings to friendly labels requested by the user
+const getLevelLabel = (level: string): string => {
+  const normalized = (level || '').toLowerCase();
+  if (normalized === 'level 4') return 'Cấp 4 (Ban Giám đốc)';
+  if (normalized === 'level 3') return 'Cấp 3 (Tổ trưởng)';
+  if (normalized === 'level 2') return 'Cấp 2 (Giảng viên)';
+  return 'Cấp 1 (Nhân viên)';
+};
+
+const getInitials = (name: string): string => {
+  if (!name || typeof name !== 'string') return '';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
 export default function MembershipInformation({
@@ -205,6 +224,7 @@ export default function MembershipInformation({
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [authorizedLevel, setAuthorizedLevel] = useState<string>('level 1');
+  const [showPassword, setShowPassword] = useState(false);
   
   // Validation and Feedback
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +234,7 @@ export default function MembershipInformation({
   const startEdit = (member: Member) => {
     setEditingId(member.id);
     setName(member.name);
-    setDob(toInputFormat(member.dob));
+    setDob(member.dob || '');
     
     const defaultPositions = [
       "Quản lý", "Phó Quản lý", "Trưởng nhóm Trực ban", "Trưởng nhóm Đào tạo", 
@@ -232,6 +252,7 @@ export default function MembershipInformation({
     setPhone(member.phone || '');
     setAuthorizedLevel(member.authorizedLevel || 'level 1');
     setPassword(member.password || '');
+    setShowPassword(false);
     setError(null);
     setSuccess(false);
 
@@ -249,6 +270,7 @@ export default function MembershipInformation({
     setPhone('');
     setPassword('');
     setAuthorizedLevel('level 1');
+    setShowPassword(false);
     setError(null);
     setSuccess(false);
     setIsModalOpen(false);
@@ -271,8 +293,9 @@ export default function MembershipInformation({
     // Validation
     if (!name.trim()) return setError('Họ và Tên không được để trống.');
     if (!dob.trim()) return setError('Ngày sinh không được để trống.');
-    if (!isValidInputDateFormat(dob.trim())) {
-      return setError('Vui lòng nhập Ngày sinh chính xác theo định dạng DD/MM/YYYY.');
+    const birthDateObj = new Date(dob.trim());
+    if (isNaN(birthDateObj.getTime()) || birthDateObj.getFullYear() < 1900 || birthDateObj.getFullYear() > 2100) {
+      return setError('Vui lòng chọn Ngày sinh hợp lệ.');
     }
     if (!finalPosition.trim()) return setError('Chức vụ / Vai trò không được để trống.');
     if (!email.trim()) return setError('Địa chỉ Email không được để trống.');
@@ -281,7 +304,7 @@ export default function MembershipInformation({
     }
     if (!phone.trim()) return setError('Số điện thoại không được để trống.');
 
-    const standardDbDate = toStandardFormat(dob.trim());
+    const standardDbDate = dob.trim();
 
     // Password security check
     const isCreatorAdmin = currentUserEmail.toLowerCase() === 'setcadmin' || currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org';
@@ -522,7 +545,7 @@ export default function MembershipInformation({
                                   {member.avatar ? (
                                     <img src={member.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                                   ) : (
-                                    member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                                    getInitials(member.name)
                                   )}
                                 </div>
                                 <span className="font-bold text-slate-900">{member.name}</span>
@@ -557,7 +580,7 @@ export default function MembershipInformation({
                             </td>
                             <td className="px-4 py-3 text-center">
                               <span className={`inline-block px-1.5 py-0.5 rounded-full text-[8.5px] font-bold border uppercase ${levelClass}`}>
-                                {member.authorizedLevel || 'Cấp 1'}
+                                {getLevelLabel(member.authorizedLevel || 'level 1')}
                               </span>
                             </td>
                             <td className="px-4 py-3 font-semibold text-slate-600">{member.position}</td>
@@ -625,7 +648,7 @@ export default function MembershipInformation({
                                 {member.avatar ? (
                                   <img src={member.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                                 ) : (
-                                  member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                                  getInitials(member.name)
                                 )}
                               </div>
                               <div className="text-left">
@@ -635,7 +658,7 @@ export default function MembershipInformation({
                             </div>
 
                             <span className={`inline-block px-1.5 py-0.5 rounded-full text-[8.5px] font-bold border uppercase leading-none ${levelClass}`}>
-                              {member.authorizedLevel || 'Cấp 1'}
+                              {getLevelLabel(member.authorizedLevel || 'level 1')}
                             </span>
                           </div>
 
@@ -893,7 +916,7 @@ export default function MembershipInformation({
                 <div className="flex items-center gap-2.5">
                   <UserPlus className="h-4.5 w-4.5 text-slate-600" />
                   <h3 className="text-xs font-bold text-slate-950">
-                    {editingId ? 'Cập nhật Thông tin Thành viên' : 'Đăng ký Thành viên Mới'}
+                    {editingId ? 'Cập nhật Thông tin Nhân sự' : 'Đăng ký Nhân sự mới'}
                   </h3>
                 </div>
                 <button 
@@ -910,7 +933,7 @@ export default function MembershipInformation({
               <form onSubmit={handleSubmit} className="p-5 space-y-4">
                 {editingId && (
                   <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-center justify-between flex-row">
-                    <span className="font-semibold">Đang chỉnh sửa thành viên hiện hữu</span>
+                    <span className="font-semibold">Đang chỉnh sửa nhân sự hiện hữu</span>
                     <button 
                       type="button" 
                       onClick={cancelEdit} 
@@ -953,16 +976,15 @@ export default function MembershipInformation({
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block flex justify-between">
                     <span>Ngày sinh</span>
-                    <span className="text-emerald-700 font-mono italic text-[9px]">ngày/tháng/năm</span>
+                    <span className="text-emerald-700 font-mono italic text-[9px]">chọn ngày</span>
                   </label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                     <input
-                      type="text"
+                      type="date"
                       required
                       value={dob}
                       onChange={(e) => setDob(e.target.value)}
-                      placeholder="Ví dụ: 15/05/1990"
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all text-slate-700 font-mono"
                     />
                   </div>
@@ -1005,16 +1027,24 @@ export default function MembershipInformation({
                       <span className="text-[9px] text-amber-600 font-bold italic bg-amber-50 px-1.5 py-0.5 rounded">Chỉ Admin hệ thống</span>
                     )}
                   </div>
-                  <div className="relative">
+                  <div className="relative font-mono">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                     <input
-                      type="text"
+                      type={showPassword ? "text" : "password"}
                       disabled={!(currentUserEmail.toLowerCase() === 'setcadmin' || currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org') && !(editingId && members.find(m => m.id === editingId)?.email.toLowerCase() === currentUserEmail.toLowerCase())}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder={!(currentUserEmail.toLowerCase() === 'setcadmin' || currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org') && !(editingId && members.find(m => m.id === editingId)?.email.toLowerCase() === currentUserEmail.toLowerCase()) ? "••••••••" : "Nhập mật khẩu mới"}
-                      className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 font-mono text-slate-900 disabled:bg-slate-55 disabled:text-slate-400 disabled:border-slate-100 disabled:cursor-not-allowed"
+                      className="w-full pl-9 pr-10 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden transition-all placeholder:text-slate-400 font-mono text-slate-900 disabled:bg-slate-55 disabled:text-slate-400 disabled:border-slate-100 disabled:cursor-not-allowed"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={!(currentUserEmail.toLowerCase() === 'setcadmin' || currentUserEmail.toLowerCase() === 'setcadmin@safetycentre.org') && !(editingId && members.find(m => m.id === editingId)?.email.toLowerCase() === currentUserEmail.toLowerCase())}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 focus:outline-hidden disabled:opacity-50 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -1027,10 +1057,10 @@ export default function MembershipInformation({
                       onChange={(e) => setAuthorizedLevel(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden bg-white text-slate-800 transition-all font-semibold cursor-pointer"
                     >
-                      <option value="level 1">Cấp độ 1 (Học viên)</option>
-                      <option value="level 2">Cấp độ 2 (Hành chính / Thư ký)</option>
-                      <option value="level 3">Cấp độ 3 (Giảng viên / Giám sát)</option>
-                      <option value="level 4">Cấp độ 4 (Phó Giám đốc / Giám đốc)</option>
+                      <option value="level 1">Cấp độ 1 (Nhân viên)</option>
+                      <option value="level 2">Cấp độ 2 (Giảng viên)</option>
+                      <option value="level 3">Cấp độ 3 (Tổ trưởng)</option>
+                      <option value="level 4">Cấp độ 4 (Ban Giám đốc)</option>
                     </select>
                   </div>
                 </div>

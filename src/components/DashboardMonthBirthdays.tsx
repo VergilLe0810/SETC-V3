@@ -8,6 +8,14 @@ import { Member } from '../types';
 import { Cake, Sparkles, Gift, Calendar, Clock, User } from 'lucide-react';
 import { formatDate } from '../utils/date';
 
+const getInitials = (name: string): string => {
+  if (!name || typeof name !== 'string') return '';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
+
 interface DashboardMonthBirthdaysProps {
   members: Member[];
   activeMonth: string;
@@ -156,7 +164,7 @@ export default function DashboardMonthBirthdays({ members, activeMonth, activeYe
                     {member.avatar ? (
                       <img src={member.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                     ) : (
-                      member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                      getInitials(member.name)
                     )}
                   </div>
                   <div className="min-w-0 leading-tight">
