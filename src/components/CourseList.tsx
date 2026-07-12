@@ -67,6 +67,7 @@ export default function CourseList({
   const [durationDays, setDurationDays] = useState<number>(3);
   const [certificationEarned, setCertificationEarned] = useState('');
   const [domain, setDomain] = useState<CourseDomain>('HSE');
+  const [periods, setPeriods] = useState<number>(8);
   
   // Syllabus state (entered line by line)
   const [syllabusInput, setSyllabusInput] = useState('');
@@ -101,6 +102,7 @@ export default function CourseList({
     setSyllabusList(course.syllabus || []);
     setSyllabusInput('');
     setDomain(course.domain || 'HSE');
+    setPeriods(course.periods || 8);
     setError(null);
     setSuccess(false);
     setIsAddModalOpen(true);
@@ -118,6 +120,7 @@ export default function CourseList({
     setSyllabusList([]);
     setSyllabusInput('');
     setDomain('HSE');
+    setPeriods(8);
     setError(null);
   };
 
@@ -163,6 +166,7 @@ export default function CourseList({
         certificationEarned: finalCertificationEarned,
         syllabus: finalSyllabus,
         domain,
+        periods: Number(periods) || 8,
         quizQuestions: originalCourse?.quizQuestions || []
       };
 
@@ -190,6 +194,7 @@ export default function CourseList({
         certificationEarned: finalCertificationEarned,
         syllabus: finalSyllabus,
         domain,
+        periods: Number(periods) || 8,
         quizQuestions: [
           {
             id: `q-${Date.now()}-1`,
@@ -234,6 +239,7 @@ export default function CourseList({
   const opitoCourses = filteredCourses.filter(c => c.domain === 'OPITO/GWO');
   const hseCourses = filteredCourses.filter(c => c.domain === 'HSE' || !c.domain);
   const decreeCourses = filteredCourses.filter(c => c.domain === 'Decree' || c.domain?.toLowerCase() === 'decree');
+  const formalCourses = filteredCourses.filter(c => c.domain === 'Formal');
 
   // Custom Category Styling Helpers
   const getCategoryStyles = (cat: CourseCategory) => {
@@ -298,9 +304,14 @@ export default function CourseList({
 
                   {/* 3. Duration */}
                   <td className="px-4 py-3.5 text-center">
-                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 border border-slate-200 text-[10px] font-bold rounded-md text-slate-750">
-                      <Clock className="h-3 w-3 text-slate-400 shrink-0" />
-                      <span>{c.durationDays} Ngày</span>
+                    <div className="flex flex-col gap-1 items-center">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 border border-slate-200 text-[10px] font-bold rounded-md text-slate-750">
+                        <Clock className="h-3 w-3 text-slate-400 shrink-0" />
+                        <span>{c.durationDays} Ngày</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-bold">
+                        {c.periods || 8} tiết
+                      </div>
                     </div>
                   </td>
 
@@ -381,9 +392,12 @@ export default function CourseList({
                     </h4>
                   </div>
 
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 border border-slate-200 text-[10px] font-bold rounded-md text-slate-750 shrink-0">
-                    <Clock className="h-3 w-3 text-slate-400 shrink-0" />
-                    <span>{c.durationDays} Ngày</span>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 border border-slate-200 text-[10px] font-bold rounded-md text-slate-750">
+                      <Clock className="h-3 w-3 text-slate-400 shrink-0" />
+                      <span>{c.durationDays} Ngày</span>
+                    </div>
+                    <span className="text-[9.5px] text-slate-500 font-bold">{c.periods || 8} tiết</span>
                   </div>
                 </div>
 
@@ -551,6 +565,22 @@ export default function CourseList({
             {renderDomainTable(decreeCourses, 'DECREE')}
           </div>
 
+          {/* 4. FORMAL Section */}
+          <div id="domain-section-formal" className="space-y-3 text-left">
+            <div className="flex items-center justify-between border-b border-slate-205 pb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 bg-rose-600 rounded-full" />
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-mono">
+                  Khóa học Chính quy
+                </h3>
+                <span className="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full border border-rose-150 font-bold font-mono">
+                  Đã đăng ký: {formalCourses.length}
+                </span>
+              </div>
+            </div>
+            {renderDomainTable(formalCourses, 'Formal')}
+          </div>
+
         </div>
 
       </div>
@@ -577,14 +607,14 @@ export default function CourseList({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="bg-white rounded-2xl border border-slate-205 shadow-2xl overflow-hidden w-full max-w-lg relative z-10 max-h-[85vh] flex flex-col"
+              className="bg-white rounded-2xl border border-slate-205 shadow-2xl overflow-hidden w-full max-w-3xl relative z-10 max-h-[90vh] flex flex-col"
             >
               {/* Header */}
-              <div className="p-4 border-b border-slate-150 bg-slate-50/80 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-4.5 w-4.5 text-emerald-600" />
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-mono">
-                    {editingId ? 'Cập nhật Chi tiết Chương trình' : 'Thêm Chương trình Khóa học'}
+              <div className="p-5 border-b border-slate-150 bg-slate-50/80 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <BookOpen className="h-5 w-5 text-emerald-600" />
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider font-mono">
+                    {editingId ? 'Cập nhật Chi tiết Chương trình (Firebase)' : 'Thêm Chương trình Khóa học (Firebase)'}
                   </h3>
                 </div>
                 <button 
@@ -593,97 +623,114 @@ export default function CourseList({
                     cancelEdit();
                     setIsAddModalOpen(false);
                   }}
-                  className="text-slate-400 hover:text-slate-650 p-1 hover:bg-slate-100 rounded-lg transition-all border-none cursor-pointer"
+                  className="text-slate-400 hover:text-slate-650 p-1.5 hover:bg-slate-100 rounded-lg transition-all border-none cursor-pointer"
                 >
-                  <X className="h-4.5 w-4.5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
               {/* Scrollable Form body */}
-              <form onSubmit={handleSubmit} className="overflow-y-auto p-5 space-y-4 flex-1 text-left">
+              <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-5 flex-1 text-left">
                 {error && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 flex items-start gap-2.5 animate-in fade-in duration-150">
-                    <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11.5px] text-rose-800 flex items-start gap-2.5 animate-in fade-in duration-150">
+                    <AlertCircle className="h-4.5 w-4.5 text-rose-600 shrink-0 mt-0.5" />
                     <span className="font-semibold">{error}</span>
                   </div>
                 )}
 
-                {/* Course ID and Duration row */}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  {/* Course ID (Code) */}
-                  <div className="sm:col-span-2 space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
-                      <Hash className="h-3 w-3" />
-                      <span>Mã Khóa học (Code)</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ví dụ: OSHA-30, GWO-FA"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-2.5 py-2 outline-none transition-all font-mono font-bold text-slate-800"
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Left Column: Core ID & Name */}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
+                        <Hash className="h-3 w-3" />
+                        <span>Mã Khóa học (Code)</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ví dụ: OSHA-30, GWO-FA"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-3 py-2.5 outline-none transition-all font-mono font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
+                        <FileText className="h-3 w-3" />
+                        <span>Tên Khóa học (Title)</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ví dụ: Chứng chỉ OSHA 30 Giờ Ngành Công nghiệp"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-3 py-2.5 outline-none transition-all font-semibold text-slate-800"
+                      />
+                    </div>
                   </div>
 
-                  {/* Duration days */}
-                  <div className="sm:col-span-2 space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
-                      <Clock className="h-3 w-3" />
-                      <span>Thời lượng (Ngày)</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      value={durationDays || ''}
-                      onChange={(e) => setDurationDays(Number(e.target.value))}
-                      className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-2.5 py-2 outline-none transition-all font-bold text-slate-800"
-                    />
+                  {/* Right Column: Duration & Domain */}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
+                        <Clock className="h-3 w-3" />
+                        <span>Thời lượng khóa học (Ngày)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={durationDays || ''}
+                        onChange={(e) => setDurationDays(Number(e.target.value))}
+                        className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-3 py-2.5 outline-none transition-all font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
+                        <Clock className="h-3 w-3" />
+                        <span>Số tiết giảng dạy (Mặc định 8)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={periods || ''}
+                        onChange={(e) => setPeriods(Number(e.target.value))}
+                        className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-3 py-2.5 outline-none transition-all font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider font-mono">Nhóm Lĩnh vực Đào tạo</label>
+                      <select
+                        value={domain}
+                        onChange={(e) => setDomain(e.target.value as CourseDomain)}
+                        className="w-full text-xs bg-slate-50 border border-slate-250 rounded-lg p-2.5 outline-none cursor-pointer focus:border-emerald-500 font-bold text-slate-800"
+                      >
+                        <option value="OPITO/GWO">OPITO/GWO</option>
+                        <option value="HSE">HSE (An toàn lao động)</option>
+                        <option value="Decree">Decree (Nghị định)</option>
+                        <option value="Formal">Khóa học Chính quy</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-
-                {/* Course Name (Title) */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1 font-mono">
-                    <FileText className="h-3 w-3" />
-                    <span>Tên Khóa học</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ví dụ: Chứng chỉ OSHA 30 Giờ Ngành Công nghiệp Tổng hợp"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full text-xs bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-lg px-2.5 py-2 outline-none transition-all font-semibold text-slate-800"
-                  />
-                </div>
-
-                {/* Domain group selection */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider font-mono">Nhóm Lĩnh vực</label>
-                  <select
-                    value={domain}
-                    onChange={(e) => setDomain(e.target.value as CourseDomain)}
-                    className="w-full text-xs bg-slate-50 border border-slate-250 rounded-lg p-2 outline-none cursor-pointer focus:border-emerald-500 font-bold text-slate-800"
-                  >
-                    <option value="OPITO/GWO">OPITO/GWO</option>
-                    <option value="HSE">HSE</option>
-                    <option value="Decree">Decree</option>
-                  </select>
                 </div>
 
                 {/* Pop Up Action buttons */}
-                <div className="border-t border-slate-150 pt-4 flex gap-2.5 justify-end shrink-0">
+                <div className="border-t border-slate-150 pt-5 flex gap-3 justify-end shrink-0">
                   <button
                     type="button"
                     onClick={() => {
                       cancelEdit();
                       setIsAddModalOpen(false);
                     }}
-                    className="px-4 py-2 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer font-sans bg-white"
+                    className="px-4.5 py-2 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer font-sans bg-white"
                   >
-                    Hủy bỏ
+                    Hỷ bỏ
                   </button>
                   <button
                     type="submit"

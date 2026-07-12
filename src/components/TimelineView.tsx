@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, useMemo, FormEvent, Fragment } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, ChevronLeft, ChevronRight, MapPin, Clock, User, Calendar, SlidersHorizontal, Plus, X, AlertTriangle, Trash2, Settings, ShieldAlert, AlertCircle } from 'lucide-react';
 import { Course, CourseSession, Member, CourseDomain, Classroom } from '../types';
@@ -82,6 +82,17 @@ const VI_MONTH_MAP: Record<string, string> = {
 
 const YEAR_LIST = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
 
+const calculateEndDate = (startDateStr: string, duration: number): string => {
+  if (!startDateStr || !duration) return startDateStr;
+  const date = new Date(startDateStr);
+  if (isNaN(date.getTime())) return startDateStr;
+  date.setDate(date.getDate() + duration - 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function TimelineView({ 
   courses, 
   sessions, 
@@ -110,6 +121,266 @@ export default function TimelineView({
 
   const [monthVal, setMonthVal] = useState<string>(realMonthName);
   const [yearVal, setYearVal] = useState<number>(realYear);
+
+  // States & helper calculations for Weekly Personnel Tracking Grid
+  const [trackingBaseDate, setTrackingBaseDate] = useState<Date>(() => new Date());
+
+  const sortedTrackingMembers = useMemo(() => {
+    return members.filter(m => {
+      const isCreator = m.id === 'mem-creator' || 
+                        m.email.toLowerCase() === 'setcadmin' || 
+                        m.email.toLowerCase() === 'setcadmin@safetycentre.org';
+      return !isCreator;
+    }).sort((a, b) => {
+      const getPositionPriority = (pos: string = ''): number => {
+        const norm = pos.trim().toLowerCase();
+        
+        // Các nhân sự thuộc trực ban và hành chính sẽ hiển thị ở cuối cùng của bảng
+        const isTrucBan = norm.includes('trực ban');
+        const isHanhChinh = norm.includes('hành chính');
+        
+        if (isTrucBan) return 90;
+        if (isHanhChinh) return 91;
+
+        if (norm === 'quản lý') return 1;
+        if (norm === 'phó quản lý') return 2;
+        if (norm === 'trưởng bãi cháy' || norm.includes('bãi cháy')) return 3;
+        if (norm === 'trưởng đào tạo' || norm.includes('đào tạo')) return 4;
+        if (norm === 'giảng viên') return 5;
+        if (norm === 'nhân viên bảo trì' || norm.includes('bảo trì')) return 6;
+        if (norm === 'nhân viên hỗ trợ' || norm.includes('hỗ trợ')) return 7;
+        
+        return 50; // các vị trí khác
+      };
+
+      const prioA = getPositionPriority(a.position);
+      const prioB = getPositionPriority(b.position);
+
+      if (prioA !== prioB) {
+        return prioA - prioB;
+      }
+
+      // Sắp xếp theo năm sinh từ thấp xuống cao (ascending year, oldest first)
+      const yearA = parseInt(a.dob?.substring(0, 4)) || 9999;
+      const yearB = parseInt(b.dob?.substring(0, 4)) || 9999;
+      if (yearA !== yearB) {
+        return yearA - yearB;
+      }
+
+      return a.name.localeCompare(b.name, 'vi');
+    });
+  }, [members]);
+
+  const trackingDays = useMemo(() => {
+    const dateCopy = new Date(trackingBaseDate);
+    const day = dateCopy.getDay();
+    const diff = dateCopy.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(dateCopy.setDate(diff));
+    
+    const days: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }, [trackingBaseDate]);
+
+  const trackingWeekRangeLabel = useMemo(() => {
+    if (trackingDays.length === 0) return '';
+    const first = trackingDays[0];
+    const last = trackingDays[6];
+    
+    const formatD = (d: Date) => {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+    
+    return `Tuần từ ${formatD(first)} đến ${formatD(last)}`;
+  }, [trackingDays]);
+
+  const getLocalDateString = (date: Date): string => {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const calculateTeachingPeriods = (member: Member, dateStr: string): number => {
+    let totalMorningPeriods = 0;
+    let totalAfternoonPeriods = 0;
+
+    sessions.forEach(session => {
+      const course = courses.find(c => c.id === session.courseId);
+      if (!course) return;
+
+      const isDateInSessionRange = dateStr >= session.startDate && dateStr <= session.endDate;
+      if (!isDateInSessionRange) return;
+
+      let subModuleFound = false;
+      let subModuleInstructor: string | null = null;
+      let subModuleStartTime = session.startTime;
+      let subModuleEndTime = session.endTime;
+
+      if (session.subModules) {
+        Object.keys(session.subModules).forEach(key => {
+          const val = session.subModules?.[key];
+          if (val && typeof val === 'object') {
+            if (val.date === dateStr) {
+              subModuleFound = true;
+              subModuleInstructor = val.instructor;
+              if (val.startTime) subModuleStartTime = val.startTime;
+              if (val.endTime) subModuleEndTime = val.endTime;
+            }
+          }
+        });
+      }
+
+      let isGv = false;
+      if (subModuleFound) {
+        if (subModuleInstructor && subModuleInstructor.trim().toLowerCase() === member.name.trim().toLowerCase()) {
+          isGv = true;
+        }
+      } else {
+        if (session.instructor && session.instructor.trim().toLowerCase() === member.name.trim().toLowerCase()) {
+          isGv = true;
+        }
+      }
+
+      if (!isGv) return;
+
+      const totalPeriods = course.periods !== undefined ? course.periods : 8;
+      const duration = course.durationDays || 1;
+      const dailyPeriods = totalPeriods / duration;
+
+      const overlapsMorning = subModuleStartTime < '12:00';
+      const overlapsAfternoon = subModuleEndTime > '12:00' || subModuleStartTime >= '12:00';
+
+      if (overlapsMorning && overlapsAfternoon) {
+        totalMorningPeriods += dailyPeriods / 2;
+        totalAfternoonPeriods += dailyPeriods / 2;
+      } else if (overlapsMorning) {
+        totalMorningPeriods += dailyPeriods;
+      } else if (overlapsAfternoon) {
+        totalAfternoonPeriods += dailyPeriods;
+      }
+    });
+
+    const cappedMorning = Math.min(4, totalMorningPeriods);
+    const cappedAfternoon = Math.min(4, totalAfternoonPeriods);
+    return Math.min(8, cappedMorning + cappedAfternoon);
+  };
+
+  const calculateWeeklyStats = (member: Member) => {
+    let tgCount = 0;
+    let taCount = 0;
+
+    trackingDays.forEach(date => {
+      const dateStr = getLocalDateString(date);
+      const morningAssignments = findAssignments(member, dateStr, 'Sáng');
+      const afternoonAssignments = findAssignments(member, dateStr, 'Chiều');
+
+      morningAssignments.forEach(assign => {
+        if (assign.toLowerCase().endsWith(', tg')) {
+          tgCount += 1;
+        } else if (assign.toLowerCase().endsWith(', ta')) {
+          taCount += 1;
+        }
+      });
+
+      afternoonAssignments.forEach(assign => {
+        if (assign.toLowerCase().endsWith(', tg')) {
+          tgCount += 1;
+        } else if (assign.toLowerCase().endsWith(', ta')) {
+          taCount += 1;
+        }
+      });
+    });
+
+    return {
+      tgTotal: tgCount,
+      taTotal: taCount * 2
+    };
+  };
+
+  const findAssignments = (member: Member, dateStr: string, halfDay: 'Sáng' | 'Chiều'): string[] => {
+    const assignments: string[] = [];
+    
+    sessions.forEach(session => {
+      const course = courses.find(c => c.id === session.courseId);
+      const courseCode = course ? course.code : 'N/A';
+      
+      const isDateInSessionRange = dateStr >= session.startDate && dateStr <= session.endDate;
+      if (!isDateInSessionRange) return;
+
+      let subModuleFound = false;
+      let subModuleInstructor: string | null = null;
+      let subModuleTas: string[] = [];
+      let subModuleStartTime = session.startTime;
+      let subModuleEndTime = session.endTime;
+
+      if (session.subModules) {
+        Object.keys(session.subModules).forEach(key => {
+          const val = session.subModules?.[key];
+          if (val && typeof val === 'object') {
+            if (val.date === dateStr) {
+              subModuleFound = true;
+              subModuleInstructor = val.instructor;
+              subModuleTas = val.taOfficers || [];
+              if (val.startTime) subModuleStartTime = val.startTime;
+              if (val.endTime) subModuleEndTime = val.endTime;
+            }
+          }
+        });
+      }
+
+      const overlapsMorning = subModuleStartTime < '12:00';
+      const overlapsAfternoon = subModuleEndTime > '12:00' || subModuleStartTime >= '12:00';
+      
+      if (halfDay === 'Sáng' && !overlapsMorning) return;
+      if (halfDay === 'Chiều' && !overlapsAfternoon) return;
+
+      let roles: string[] = [];
+
+      if (subModuleFound) {
+        if (subModuleInstructor && subModuleInstructor.trim().toLowerCase() === member.name.trim().toLowerCase()) {
+          roles.push('GV');
+        }
+        const isTa = subModuleTas.some(t => t.trim().toLowerCase() === member.name.trim().toLowerCase());
+        if (isTa) {
+          roles.push('TA');
+        }
+      } else {
+        if (session.instructor && session.instructor.trim().toLowerCase() === member.name.trim().toLowerCase()) {
+          roles.push('GV');
+        }
+        
+        if (session.taOfficer) {
+          const tas = session.taOfficer.split(/[,;]+/).map(t => t.trim().toLowerCase());
+          if (tas.includes(member.name.trim().toLowerCase())) {
+            roles.push('TA');
+          }
+        }
+
+        if (session.tgOfficer) {
+          const tgs = session.tgOfficer.split(/[,;]+/).map(t => t.trim().toLowerCase());
+          if (tgs.includes(member.name.trim().toLowerCase())) {
+            roles.push('TG');
+          }
+        }
+      }
+
+      if (roles.length > 0) {
+        roles.forEach(role => {
+          assignments.push(`${courseCode}, ${role}`);
+        });
+      }
+    });
+
+    return assignments;
+  };
 
   // Pop-up modal details view state
   const [popupCourseSession, setPopupCourseSession] = useState<{ course: Course; session: CourseSession } | null>(null);
@@ -151,6 +422,11 @@ export default function TimelineView({
      popupCourseSession.course.code?.toUpperCase().includes('T.BOSIET')) && 
     popupCourseSession.course.domain === 'OPITO/GWO');
 
+  const isSessionHseMultiDay = !!(popupCourseSession && 
+    popupCourseSession.course.domain === 'HSE' && 
+    popupCourseSession.course.durationDays && 
+    popupCourseSession.course.durationDays > 1);
+
   const handleStartEditingSession = () => {
     if (!popupCourseSession) return;
     const { session } = popupCourseSession;
@@ -166,6 +442,8 @@ export default function TimelineView({
     setEditTgOfficer(session.tgOfficer || '');
     setEditMethod(session.method || 'Offline');
     
+    const isSessionHse = popupCourseSession.course.domain === 'HSE' && popupCourseSession.course.durationDays && popupCourseSession.course.durationDays > 1;
+
     const defaultSubs: Record<string, {
       instructor: string;
       date: string;
@@ -173,42 +451,71 @@ export default function TimelineView({
       endTime: string;
       classroom: string;
       taOfficers?: string[];
-    }> = {
-      "OSI": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
-      "HE": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
-      "SS": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
-      "FF": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
-      "FA": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
-      "HE (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
-      "FF.SR (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
-      "SS (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] },
-    };
-    if (session.subModules) {
-      Object.keys(defaultSubs).forEach(key => {
+      theoryClassroom?: string;
+      practiceArea?: string;
+    }> = {};
+
+    if (isSessionHse) {
+      const daysCount = popupCourseSession.course.durationDays || 1;
+      for (let i = 1; i <= daysCount; i++) {
+        const key = `Day ${i}`;
         const val = session.subModules?.[key];
-        if (val) {
-          if (typeof val === 'object') {
-            defaultSubs[key] = {
-              instructor: val.instructor || "",
-              date: val.date || "",
-              startTime: val.startTime || "08:00",
-              endTime: val.endTime || "16:30",
-              classroom: val.classroom || "",
-              taOfficers: (val as any).taOfficers || []
-            };
-          } else if (typeof val === 'string') {
-            defaultSubs[key] = {
-              instructor: val,
-              date: "",
-              startTime: "08:00",
-              endTime: "16:30",
-              classroom: "",
-              taOfficers: []
-            };
-          }
+        if (val && typeof val === 'object') {
+          defaultSubs[key] = {
+            instructor: val.instructor || session.instructor || "",
+            date: val.date || calculateEndDate(session.startDate, i),
+            startTime: val.startTime || session.startTime || "08:00",
+            endTime: val.endTime || session.endTime || "16:30",
+            classroom: val.classroom || session.classroom || "",
+            theoryClassroom: val.theoryClassroom || val.classroom || session.classroom || "",
+            practiceArea: val.practiceArea || ""
+          };
+        } else {
+          defaultSubs[key] = {
+            instructor: session.instructor || "",
+            date: calculateEndDate(session.startDate, i),
+            startTime: session.startTime || "08:00",
+            endTime: session.endTime || "16:30",
+            classroom: session.classroom || "",
+            theoryClassroom: session.classroom || "",
+            practiceArea: ""
+          };
         }
+      }
+    } else {
+      const standardKeys = ["OSI", "HE", "SS", "FF", "FA", "HE (P)", "FF.SR (P)", "SS (P)"];
+      standardKeys.forEach(k => {
+        defaultSubs[k] = { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] };
       });
+
+      if (session.subModules) {
+        Object.keys(defaultSubs).forEach(key => {
+          const val = session.subModules?.[key];
+          if (val) {
+            if (typeof val === 'object') {
+              defaultSubs[key] = {
+                instructor: val.instructor || "",
+                date: val.date || "",
+                startTime: val.startTime || "08:00",
+                endTime: val.endTime || "16:30",
+                classroom: val.classroom || "",
+                taOfficers: (val as any).taOfficers || []
+              };
+            } else if (typeof val === 'string') {
+              defaultSubs[key] = {
+                instructor: val,
+                date: "",
+                startTime: "08:00",
+                endTime: "16:30",
+                classroom: "",
+                taOfficers: []
+              };
+            }
+          }
+        });
+      }
     }
+    
     setEditSubModules(defaultSubs);
   };
 
@@ -228,7 +535,7 @@ export default function TimelineView({
       taOfficer: editTaOfficer,
       tgOfficer: editTgOfficer,
       method: isSessionOpitoBosiet ? 'Offline' : editMethod,
-      subModules: isSessionOpitoBosiet ? editSubModules : popupCourseSession.session.subModules,
+      subModules: (isSessionOpitoBosiet || isSessionHseMultiDay) ? editSubModules : popupCourseSession.session.subModules,
     };
 
     if (onUpdateSession) {
@@ -319,9 +626,68 @@ export default function TimelineView({
   const selectedCourse = courses.find(c => c.id === selCourseId);
   const isOpitoBosiet = !!(selectedCourse && 
     (selectedCourse.code?.toUpperCase() === 'OPITO T.BOSIET' || 
-     selectedCourse.title?.toUpperCase().includes('OPITO T.BOSIET') ||
+     selectedCourse.title?.toUpperCase().includes('OPITO T.BOSIET' ) ||
      selectedCourse.code?.toUpperCase().includes('T.BOSIET')) && 
     selectedCourse.domain === 'OPITO/GWO');
+
+  const [hseDaysData, setHseDaysData] = useState<Record<string, {
+    date: string;
+    theoryClassroom: string;
+    practiceArea: string;
+  }>>({});
+
+  const isHseMultiDay = !!(selectedCourse && selectedCourse.domain === 'HSE' && selectedCourse.durationDays && selectedCourse.durationDays > 1);
+
+  useEffect(() => {
+    if (!selCourseId) return;
+    const selected = courses.find(c => c.id === selCourseId);
+    if (selected && selected.domain === 'HSE') {
+      const duration = selected.durationDays || 1;
+      const computedEnd = calculateEndDate(assignStartDate, duration);
+      setAssignEndDate(computedEnd);
+
+      if (duration > 1) {
+        const initialDays: Record<string, { date: string; theoryClassroom: string; practiceArea: string }> = {};
+        for (let i = 1; i <= duration; i++) {
+          const computedDate = calculateEndDate(assignStartDate, i);
+          const key = `Day ${i}`;
+          initialDays[key] = {
+            date: computedDate,
+            theoryClassroom: hseDaysData[key]?.theoryClassroom || assignClassroom || (activeClassrooms[0]?.name || ''),
+            practiceArea: hseDaysData[key]?.practiceArea || ''
+          };
+        }
+        setHseDaysData(initialDays);
+      }
+    }
+  }, [selCourseId, assignStartDate, assignClassroom]);
+
+  useEffect(() => {
+    if (!popupCourseSession || !isEditingSession) return;
+    const isSessionHse = popupCourseSession.course.domain === 'HSE';
+    if (isSessionHse) {
+      const duration = popupCourseSession.course.durationDays || 1;
+      const computedEnd = calculateEndDate(editStartDate, duration);
+      setEditEndDate(computedEnd);
+
+      if (duration > 1) {
+        setEditSubModules(prev => {
+          const next = { ...prev };
+          for (let i = 1; i <= duration; i++) {
+            const key = `Day ${i}`;
+            const computedDate = calculateEndDate(editStartDate, i);
+            next[key] = {
+              ...(next[key] || { instructor: editInstructor || "", startTime: "08:00", endTime: "16:30", classroom: editClassroom || "" }),
+              date: computedDate,
+              theoryClassroom: next[key]?.theoryClassroom || next[key]?.classroom || editClassroom || "",
+              classroom: next[key]?.classroom || editClassroom || ""
+            };
+          }
+          return next;
+        });
+      }
+    }
+  }, [editStartDate, isEditingSession, popupCourseSession]);
 
   const handleCourseSelectChange = (courseIdVal: string) => {
     setSelCourseId(courseIdVal);
@@ -527,7 +893,23 @@ export default function TimelineView({
       method: isOpitoBosiet ? 'Offline' : assignMethod,
       notes: assignNote || undefined,
       domain: assignDomain,
-      subModules: isOpitoBosiet ? subModulesData : undefined,
+      subModules: isOpitoBosiet 
+        ? subModulesData 
+        : (isHseMultiDay 
+            ? Object.keys(hseDaysData).reduce((acc, key) => {
+                const item = hseDaysData[key];
+                acc[key] = {
+                  instructor: assignInstructor,
+                  date: item.date,
+                  startTime: assignStartTime,
+                  endTime: assignEndTime,
+                  classroom: item.theoryClassroom,
+                  theoryClassroom: item.theoryClassroom,
+                  practiceArea: item.practiceArea
+                };
+                return acc;
+              }, {} as any)
+            : undefined),
     };
 
     if (onAddSession) {
@@ -992,7 +1374,7 @@ export default function TimelineView({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1 text-left">
                     {!isOpitoBosiet ? (
                       <>
-                        <div>
+                        <div className={isHseMultiDay ? "col-span-1 sm:col-span-2" : ""}>
                           <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
                             Giảng viên
                           </label>
@@ -1009,23 +1391,110 @@ export default function TimelineView({
                             ))}
                           </select>
                         </div>
-                        <div>
-                          <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                            Phòng học
-                          </label>
-                          <select
-                            id="assign-select-classroom"
-                            value={assignClassroom}
-                            onChange={(e) => setAssignClassroom(e.target.value)}
-                            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                          >
-                            {activeClassrooms.map(room => (
-                              <option key={room.id} value={room.name}>
-                                {room.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        
+                        {!isHseMultiDay ? (
+                          <div>
+                            <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                              Phòng học
+                            </label>
+                            <select
+                              id="assign-select-classroom"
+                              value={assignClassroom}
+                              onChange={(e) => setAssignClassroom(e.target.value)}
+                              className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                            >
+                              {activeClassrooms.map(room => (
+                                <option key={room.id} value={room.name}>
+                                  {room.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="col-span-1 sm:col-span-2 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 space-y-4 mt-1 text-left">
+                            <div className="flex justify-between items-center pb-2 border-b border-emerald-100">
+                              <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">
+                                Phân bổ chi tiết các ngày học (Khóa HSE {selectedCourse?.durationDays} Ngày)
+                              </span>
+                              <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
+                                {selectedCourse?.durationDays} Ngày học
+                              </span>
+                            </div>
+                            <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1">
+                              {Array.from({ length: selectedCourse?.durationDays || 1 }).map((_, idx) => {
+                                const dayNum = idx + 1;
+                                const key = `Day ${dayNum}`;
+                                const dayData = hseDaysData[key] || { date: calculateEndDate(assignStartDate, dayNum), theoryClassroom: assignClassroom || '', practiceArea: '' };
+                                
+                                return (
+                                  <div key={key} className="bg-white border border-slate-100 p-3 rounded-xl space-y-3 shadow-3xs">
+                                    <div className="flex items-center justify-between border-b border-slate-50 pb-1.5 flex-row">
+                                      <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 uppercase">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-[#549B8C]"></span>
+                                        Ngày {dayNum}
+                                      </span>
+                                      <span className="text-[11px] font-bold text-slate-500 font-mono">
+                                        {formatDate(dayData.date)}
+                                      </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                                      {/* Theory Classroom */}
+                                      <div>
+                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                          Phòng học lý thuyết
+                                        </label>
+                                        <select
+                                          value={dayData.theoryClassroom}
+                                          onChange={(e) => setHseDaysData(prev => ({
+                                            ...prev,
+                                            [key]: { ...prev[key], theoryClassroom: e.target.value }
+                                          }))}
+                                          className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                        >
+                                          <option value="">-- Chọn phòng --</option>
+                                          {activeClassrooms.map(room => (
+                                            <option key={room.id} value={room.name}>
+                                              {room.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      {/* Practical Training Area */}
+                                      <div>
+                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-sans">
+                                          Khu học thực hành
+                                        </label>
+                                        <div className="relative">
+                                          <input
+                                            type="text"
+                                            list={`practice-areas-list-${dayNum}`}
+                                            value={dayData.practiceArea}
+                                            onChange={(e) => setHseDaysData(prev => ({
+                                              ...prev,
+                                              [key]: { ...prev[key], practiceArea: e.target.value }
+                                            }))}
+                                            placeholder="Ví dụ: Bãi thực hành giàn giáo"
+                                            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                          />
+                                          <datalist id={`practice-areas-list-${dayNum}`}>
+                                            <option value="Sân diễn tập Phòng cháy Chữa cháy (PCCC)" />
+                                            <option value="Bãi thực hành giàn giáo & Làm việc trên cao" />
+                                            <option value="Bể bơi huấn luyện Sinh tồn dưới nước (HUET)" />
+                                            <option value="Phòng giả lập Không gian hạn chế" />
+                                            <option value="Khu huấn luyện Sơ cấp cứu thực tế" />
+                                            <option value="Sân huấn luyện An toàn Lao động ngoài trời" />
+                                          </datalist>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="col-span-1 sm:col-span-2 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 space-y-4 mt-1 text-left">
@@ -1378,15 +1847,23 @@ export default function TimelineView({
         </div>
       )}
 
-      {/* Header section with profile avatar or selectors */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-100 pb-4 text-left">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2 mb-0">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-            Biểu đồ Lịch Đào tạo
-          </h2>
-          {hasAssignmentAccess && (
-            <div className="flex flex-wrap items-center gap-2">
+      {/* Bảng phân công khóa học theo tuần */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-3xs p-6 space-y-5 text-left mb-8 animate-in fade-in duration-200">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+              <span className="p-1.5 bg-emerald-50 text-[#559b8c] rounded-lg">
+                <User className="h-4 w-4" />
+              </span>
+              Bảng phân công khóa học
+            </h3>
+            <p className="text-[11px] text-slate-500 font-medium">
+              Bảng phân công khóa học theo nhân sự
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {hasAssignmentAccess && (
               <button
                 id="open-courses-assignment-btn"
                 type="button"
@@ -1403,26 +1880,269 @@ export default function TimelineView({
                     }
                   }
                 }}
-                className="inline-flex items-center gap-1.5 bg-[#559b8c] hover:bg-[#3f766a] text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-3xs hover:shadow-2xs cursor-pointer transition-all active:scale-[0.98] select-none flex-row"
+                className="inline-flex items-center gap-1.5 bg-[#559b8c] hover:bg-[#3f766a] text-white px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-3xs hover:shadow-2xs cursor-pointer transition-all active:scale-[0.98] select-none flex-row border-none"
                 title="Mở bảng phân bổ lịch học khóa đào tạo"
               >
                 <Calendar className="h-3.5 w-3.5 shrink-0" />
                 <span>Đăng ký Khóa học</span>
               </button>
+            )}
 
-              {onClearAllSessions && sessions.length > 0 && (
-                <button
-                  type="button"
-                  onClick={onClearAllSessions}
-                  className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-3xs hover:shadow-2xs cursor-pointer transition-all active:scale-[0.98] select-none flex-row border-none hover:opacity-90"
-                  title="Xóa vĩnh viễn toàn bộ lịch học đang có"
-                >
-                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                  <span>Xóa toàn bộ lịch học ({sessions.length})</span>
-                </button>
-              )}
+            {/* Week Selector Navigation */}
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setTrackingBaseDate(prev => {
+                    const prior = new Date(prev);
+                    prior.setDate(prev.getDate() - 7);
+                    return prior;
+                  });
+                }}
+                className="p-1.5 hover:bg-white rounded-lg text-slate-600 hover:text-slate-900 transition-all cursor-pointer border border-transparent hover:border-slate-200"
+                title="Tuần trước"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+
+              <span className="text-[11px] font-black text-slate-700 px-3 font-mono min-w-[220px] text-center">
+                {trackingWeekRangeLabel}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTrackingBaseDate(prev => {
+                    const next = new Date(prev);
+                    next.setDate(prev.getDate() + 7);
+                    return next;
+                  });
+                }}
+                className="p-1.5 hover:bg-white rounded-lg text-slate-600 hover:text-slate-900 transition-all cursor-pointer border border-transparent hover:border-slate-200"
+                title="Tuần tiếp theo"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTrackingBaseDate(new Date())}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-black text-slate-700 transition-colors cursor-pointer ml-1"
+              >
+                Hiện tại
+              </button>
             </div>
-          )}
+          </div>
+        </div>
+
+        {/* Scrollable Grid Table */}
+        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-3xs max-w-full">
+          <table className="w-full text-xs text-left border-collapse min-w-[1300px]">
+            <thead>
+              {/* Row 1: Day of week */}
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th rowSpan={2} className="p-3 font-extrabold text-slate-700 text-center border-r border-slate-200 bg-slate-100/80 sticky left-0 z-10 w-[200px] min-w-[200px] shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                  Thành viên
+                </th>
+                {trackingDays.map((date, idx) => {
+                  const isToday = getLocalDateString(date) === getLocalDateString(new Date());
+                  const dayLabel = idx === 6 ? 'Chủ nhật' : `Thứ ${idx + 2}`;
+                  const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+                  return (
+                    <th 
+                      key={idx} 
+                      colSpan={3} 
+                      className={`p-2 font-black text-center border-r border-slate-200 text-[10.5px] ${
+                        isToday 
+                          ? 'bg-emerald-50 text-emerald-800' 
+                          : 'text-slate-600 bg-slate-50/50'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center justify-center">
+                        <span className="uppercase text-[9px] font-bold tracking-tight">{dayLabel}</span>
+                        <span className="font-mono text-xs">{dateStr}</span>
+                      </div>
+                    </th>
+                  );
+                })}
+                <th rowSpan={2} className="p-3 font-extrabold text-slate-700 text-center border-r border-slate-200 bg-slate-100/80 w-[60px] min-w-[60px] uppercase">
+                  TG
+                </th>
+                <th rowSpan={2} className="p-3 font-extrabold text-slate-700 text-center bg-slate-100/80 w-[60px] min-w-[60px] uppercase">
+                  TA
+                </th>
+              </tr>
+              {/* Row 2: Morning/Afternoon/Periods sub-headers */}
+              <tr className="bg-slate-50/80 border-b border-slate-200 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">
+                {trackingDays.map((date, idx) => {
+                  const isToday = getLocalDateString(date) === getLocalDateString(new Date());
+                  const cellClass = isToday ? 'bg-emerald-50/40 text-emerald-950 font-bold' : '';
+                  return (
+                    <Fragment key={idx}>
+                      <th className={`p-1.5 text-center border-r border-slate-150 ${cellClass}`}>Sáng</th>
+                      <th className={`p-1.5 text-center border-r border-slate-150 ${cellClass}`}>Chiều</th>
+                      <th className={`p-1.5 text-center border-r border-slate-200 ${cellClass} text-amber-800`}>Tiết</th>
+                    </Fragment>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedTrackingMembers.length > 0 ? (
+                sortedTrackingMembers.map(member => {
+                  const stats = calculateWeeklyStats(member);
+                  return (
+                    <tr key={member.id} className="hover:bg-slate-50/30 transition-colors border-b border-slate-100">
+                      <td className="p-3 font-bold text-slate-900 border-r border-slate-200 bg-white sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                        <div className="flex flex-col text-left">
+                          <span className="text-xs text-slate-900 font-extrabold truncate max-w-[170px]" title={member.name}>{member.name}</span>
+                        </div>
+                      </td>
+                      {trackingDays.map((date, idx) => {
+                        const dateStr = getLocalDateString(date);
+                        const isToday = dateStr === getLocalDateString(new Date());
+                        
+                        const morningAssignments = findAssignments(member, dateStr, 'Sáng');
+                        const afternoonAssignments = findAssignments(member, dateStr, 'Chiều');
+                        const dayPeriods = calculateTeachingPeriods(member, dateStr);
+                        
+                        const cellClass = isToday ? 'bg-emerald-50/10' : '';
+                        
+                        return (
+                          <Fragment key={idx}>
+                            {/* Morning Slot */}
+                            <td className={`p-2 border-r border-slate-150 align-top ${cellClass} text-center min-w-[75px]`}>
+                              {morningAssignments.length > 0 ? (
+                                <div className="flex flex-col gap-1.5">
+                                  {morningAssignments.map((assign, aIdx) => {
+                                    const isGv = assign.toLowerCase().endsWith(', gv');
+                                    const isTa = assign.toLowerCase().endsWith(', ta');
+                                    const isTg = assign.toLowerCase().endsWith(', tg');
+                                    
+                                    let badgeBg = 'bg-slate-50 border-slate-200 text-slate-700';
+                                    if (isGv) badgeBg = 'bg-amber-50 text-amber-900 border-amber-250 font-black';
+                                    else if (isTa) badgeBg = 'bg-teal-50 text-teal-900 border-teal-250 font-black';
+                                    else if (isTg) badgeBg = 'bg-sky-50 text-sky-900 border-sky-250 font-black';
+                                    
+                                    return (
+                                      <div 
+                                        key={aIdx} 
+                                        className={`px-1.5 py-1 text-[9.5px] rounded-md border text-center leading-tight shadow-3xs truncate ${badgeBg}`}
+                                        title={assign}
+                                      >
+                                        {assign}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <span className="text-slate-300 text-[10px] font-normal italic">-</span>
+                              )}
+                            </td>
+                            
+                            {/* Afternoon Slot */}
+                            <td className={`p-2 border-r border-slate-150 align-top ${cellClass} text-center min-w-[75px]`}>
+                              {afternoonAssignments.length > 0 ? (
+                                <div className="flex flex-col gap-1.5">
+                                  {afternoonAssignments.map((assign, aIdx) => {
+                                    const isGv = assign.toLowerCase().endsWith(', gv');
+                                    const isTa = assign.toLowerCase().endsWith(', ta');
+                                    const isTg = assign.toLowerCase().endsWith(', tg');
+                                    
+                                    let badgeBg = 'bg-slate-50 border-slate-200 text-slate-700';
+                                    if (isGv) badgeBg = 'bg-amber-50 text-amber-900 border-amber-250 font-black';
+                                    else if (isTa) badgeBg = 'bg-teal-50 text-teal-900 border-teal-250 font-black';
+                                    else if (isTg) badgeBg = 'bg-sky-50 text-sky-900 border-sky-250 font-black';
+                                    
+                                    return (
+                                      <div 
+                                        key={aIdx} 
+                                        className={`px-1.5 py-1 text-[9.5px] rounded-md border text-center leading-tight shadow-3xs truncate ${badgeBg}`}
+                                        title={assign}
+                                      >
+                                        {assign}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <span className="text-slate-300 text-[10px] font-normal italic">-</span>
+                              )}
+                            </td>
+                            
+                            {/* Teaching periods for Lecturers (GV) */}
+                            <td className={`p-2 border-r border-slate-200 align-middle ${cellClass} text-center font-mono text-[11.5px] font-bold text-amber-800 bg-amber-50/15`}>
+                              {dayPeriods > 0 ? (
+                                <span>{dayPeriods === Math.floor(dayPeriods) ? dayPeriods : dayPeriods.toFixed(1)}</span>
+                              ) : (
+                                <span className="text-slate-300 font-normal italic">-</span>
+                              )}
+                            </td>
+                          </Fragment>
+                        );
+                      })}
+                      {/* TG Summary Column */}
+                      <td className="p-3 font-mono font-black text-center border-r border-slate-200 bg-slate-50/40 text-xs">
+                        {stats.tgTotal > 0 ? (
+                          <span className="px-1.5 py-0.5 bg-sky-50 text-sky-800 rounded border border-sky-200 shadow-3xs">
+                            {stats.tgTotal}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 font-normal italic">-</span>
+                        )}
+                      </td>
+                      {/* TA Summary Column */}
+                      <td className="p-3 font-mono font-black text-center bg-slate-50/40 text-xs">
+                        {stats.taTotal > 0 ? (
+                          <span className="px-1.5 py-0.5 bg-teal-50 text-teal-800 rounded border border-teal-200 shadow-3xs">
+                            {stats.taTotal}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 font-normal italic">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={24} className="p-8 text-center text-xs text-slate-400 font-bold font-serif bg-slate-50/50">
+                    Không có thành viên nào hoạt động trong danh mục chung.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Legend */}
+        <div className="flex flex-wrap gap-4 items-center justify-between text-[10.5px] font-medium text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200/60">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-bold text-slate-700">Chú thích vai trò:</span>
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+              <strong>GV:</strong> Giảng viên
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-teal-500"></span>
+              <strong>TA:</strong> Trợ giảng (Phụ trách lý thuyết / thực hành)
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-sky-500"></span>
+              <strong>TG:</strong> Phụ giảng (Nhân viên hỗ trợ lớp)
+            </span>
+          </div>
+          <span className="font-mono text-[9.5px]">Đồng bộ trực tiếp theo thời gian thực</span>
+        </div>
+      </div>
+
+      {/* Header section with profile avatar or selectors */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-100 pb-4 text-left">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2 mb-0">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+            Biểu đồ Lịch Đào tạo
+          </h2>
         </div>
 
         {/* Integrated Selectors block: Year and Month selections */}
@@ -1784,6 +2504,8 @@ export default function TimelineView({
         </div>
       </div>
 
+      {/* OLD TABLE DELETED */}
+
       {/* Pop-up Course Session Detail Modal */}
       {popupCourseSession && (
         <div 
@@ -1794,7 +2516,7 @@ export default function TimelineView({
           }}
         >
           <div 
-            className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden transform transition-all animate-in zoom-in-95 duration-200"
+            className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl border border-slate-100 overflow-hidden transform transition-all animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -1818,7 +2540,7 @@ export default function TimelineView({
             </div>
 
             {/* Modal Content */}
-            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-left">
+            <div className="p-6 space-y-4 max-h-[85vh] overflow-y-auto text-left">
               {isEditingSession ? (
                 <div className="space-y-4 text-left">
                   {/* Course Info Display Only */}
@@ -2028,7 +2750,7 @@ export default function TimelineView({
                       </div>
                     )}
 
-                    {!isSessionOpitoBosiet && (
+                    {!isSessionOpitoBosiet && !isSessionHseMultiDay && (
                       <div>
                         <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Phòng Đào tạo</label>
                         <select 
@@ -2042,6 +2764,96 @@ export default function TimelineView({
                             </option>
                           ))}
                         </select>
+                      </div>
+                    )}
+
+                    {isSessionHseMultiDay && (
+                      <div className="col-span-2 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 space-y-4 mt-1 text-left">
+                        <div className="flex justify-between items-center pb-2 border-b border-emerald-100 font-sans">
+                          <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">
+                            Chỉnh sửa chi tiết các ngày học (Khóa HSE Multi-day)
+                          </span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
+                            {popupCourseSession.course.durationDays} Ngày học
+                          </span>
+                        </div>
+                        <div className="space-y-4 max-h-[355px] overflow-y-auto pr-1">
+                          {Array.from({ length: popupCourseSession.course.durationDays || 1 }).map((_, idx) => {
+                            const dayNum = idx + 1;
+                            const key = `Day ${dayNum}`;
+                            const data = editSubModules[key] || { instructor: editInstructor || "", date: calculateEndDate(editStartDate, dayNum), startTime: "08:00", endTime: "16:30", classroom: editClassroom || "", theoryClassroom: editClassroom || "", practiceArea: "" };
+                            
+                            return (
+                              <div key={key} className="bg-white border border-slate-100 p-3 rounded-xl space-y-3 shadow-3xs font-sans">
+                                <div className="flex items-center justify-between border-b border-slate-50 pb-1.5 flex-row">
+                                  <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 uppercase">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-[#559b8c]"></span>
+                                    Ngày {dayNum}
+                                  </span>
+                                  <span className="text-[10px] font-bold text-slate-500 font-mono">
+                                    {formatDate(data.date)}
+                                  </span>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {/* Phòng học lý thuyết */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                      Phòng học lý thuyết
+                                    </label>
+                                    <select
+                                      value={data.theoryClassroom || data.classroom || ''}
+                                      onChange={(e) => setEditSubModules(prev => ({
+                                        ...prev,
+                                        [key]: { 
+                                          ...prev[key], 
+                                          classroom: e.target.value,
+                                          theoryClassroom: e.target.value 
+                                        }
+                                      }))}
+                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                    >
+                                      <option value="">-- Chọn phòng --</option>
+                                      {activeClassrooms.map(room => (
+                                        <option key={room.id} value={room.name}>
+                                          {room.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {/* Khu học thực hành */}
+                                  <div className="space-y-1">
+                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider font-sans">
+                                      Khu học thực hành
+                                    </label>
+                                    <div className="relative">
+                                      <input
+                                        type="text"
+                                        list={`edit-practice-areas-list-${dayNum}`}
+                                        value={data.practiceArea || ''}
+                                        onChange={(e) => setEditSubModules(prev => ({
+                                          ...prev,
+                                          [key]: { ...prev[key], practiceArea: e.target.value }
+                                        }))}
+                                        placeholder="Ví dụ: Bãi thực hành giàn giáo"
+                                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                      />
+                                      <datalist id={`edit-practice-areas-list-${dayNum}`}>
+                                        <option value="Sân diễn tập Phòng cháy Chữa cháy (PCCC)" />
+                                        <option value="Bãi thực hành giàn giáo & Làm việc trên cao" />
+                                        <option value="Bể bơi huấn luyện Sinh tồn dưới nước (HUET)" />
+                                        <option value="Phòng giả lập Không gian hạn chế" />
+                                        <option value="Khu huấn luyện Sơ cấp cứu thực tế" />
+                                        <option value="Sân huấn luyện An toàn Lao động ngoài trời" />
+                                      </datalist>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2103,178 +2915,234 @@ export default function TimelineView({
                   )}
                 </div>
               ) : (
-                <div className="text-left space-y-4 animate-fade-in font-sans">
-                  {/* Course Name */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Môn huấn luyện</span>
-                    <span id="popup-course-name" className="text-sm font-black text-slate-800 block leading-tight font-serif">
-                      {popupCourseSession.course.title}
-                    </span>
-                  </div>
-
-                  {/* Course ID (Removed Reference GUID block) */}
-                  <div className="pt-1">
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mã môn đào tạo</span>
-                      <span id="popup-course-id" className="text-xs font-bold text-slate-705 bg-slate-100 px-2 py-0.5 rounded-md inline-block font-mono">
-                        {popupCourseSession.course.code}
+                <div className="text-left animate-fade-in font-sans grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                  {/* Left Column */}
+                  <div className="space-y-4">
+                    {/* Course Name */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Môn huấn luyện</span>
+                      <span id="popup-course-name" className="text-sm font-black text-slate-800 block leading-tight font-serif">
+                        {popupCourseSession.course.title}
                       </span>
                     </div>
-                  </div>
 
-                  {/* Time and Date */}
-                  <div className="border-t border-b border-slate-50 py-3 space-y-2">
-                    <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-750 flex-row">
-                      <Calendar className="h-4 w-4 text-emerald-600 shrink-0" />
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Thời gian Khóa học</span>
-                        <span id="popup-course-date">
-                          {formatDate(popupCourseSession.session.startDate)} đến {formatDate(popupCourseSession.session.endDate)}
+                    {/* Course ID (Removed Reference GUID block) */}
+                    <div className="pt-1">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mã môn đào tạo</span>
+                        <span id="popup-course-id" className="text-xs font-bold text-slate-705 bg-slate-100 px-2.5 py-0.5 rounded-md inline-block font-mono">
+                          {popupCourseSession.course.code}
                         </span>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-755 flex-row">
-                      <Clock className="h-4 w-4 text-emerald-600 shrink-0" />
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Giờ Lên lớp dự kiến</span>
-                        <span id="popup-course-time">
-                          {popupCourseSession.session.startTime} - {popupCourseSession.session.endTime}
-                        </span>
+
+                    {/* Time and Date */}
+                    <div className="border-t border-b border-slate-50 py-3 space-y-2">
+                      <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-705 flex-row">
+                        <Calendar className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Thời gian Khóa học</span>
+                          <span id="popup-course-date">
+                            {formatDate(popupCourseSession.session.startDate)} đến {formatDate(popupCourseSession.session.endDate)}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-755 flex-row">
+                        <Clock className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Giờ Lên lớp dự kiến</span>
+                          <span id="popup-course-time">
+                            {popupCourseSession.session.startTime} - {popupCourseSession.session.endTime}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Classroom Details */}
+                    <div className="space-y-0.5 pt-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Địa điểm & Phòng học</span>
+                      <span className="text-xs font-bold text-slate-850 px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg block">
+                        {popupCourseSession.session.classroom}
+                      </span>
+                    </div>
+
+                    {/* Number of Learners (replaces Estimate quantity of learners) */}
+                    <div className="border-t border-slate-50 pt-3">
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex justify-between items-center flex-row">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block text-left">Sĩ số tối đa</span>
+                        <div className="bg-emerald-100 text-emerald-800 font-extrabold text-xs px-2.5 py-1 rounded-lg whitespace-nowrap">
+                          {popupCourseSession.session.maxCapacity} Học viên
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Instructor and Method */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-0.5 text-left">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Giảng viên / Đội ngũ</span>
-                      <span id="popup-course-instructor" className="text-xs font-black text-slate-750 block truncate" title={popupCourseSession.session.instructor}>
-                        {popupCourseSession.session.instructor.split(' (')[0]}
-                      </span>
-                    </div>
-                    {!isSessionOpitoBosiet && (
+                  {/* Right Column */}
+                  <div className="space-y-4">
+                    {/* Instructor and Method */}
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-0.5 text-left">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hình thức học</span>
-                        <span id="popup-course-method" className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md inline-block font-mono">
-                          {popupCourseSession.session.method === 'Online' ? 'Trực tuyến (Online)' : 'Trực tiếp (Offline)'}
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Giảng viên / Đội ngũ</span>
+                        <span id="popup-course-instructor" className="text-xs font-black text-slate-750 block truncate" title={popupCourseSession.session.instructor}>
+                          {popupCourseSession.session.instructor.split(' (')[0]}
                         </span>
+                      </div>
+                      {!isSessionOpitoBosiet && (
+                        <div className="space-y-0.5 text-left">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hình thức học</span>
+                          <span id="popup-course-method" className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 border border-emerald-100 rounded-md inline-block font-mono">
+                            {popupCourseSession.session.method === 'Online' ? 'Trực tuyến (Online)' : 'Trực tiếp (Offline)'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* TG and TA */}
+                    <div className="grid grid-cols-2 gap-4 border-t border-slate-105 pt-3">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Trợ giảng</span>
+                        <span id="popup-course-tg" className="text-xs font-semibold text-slate-755 block truncate bg-slate-50 px-2 py-1 border border-slate-100 rounded-md" title={popupCourseSession.session.tgOfficer || 'Chưa phân công'}>
+                          {popupCourseSession.session.tgOfficer || 'Chưa phân công'}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phụ giảng</span>
+                        <span id="popup-course-ta" className="text-xs font-semibold text-slate-755 block truncate bg-slate-50 px-2 py-1 border border-slate-100 rounded-md" title={popupCourseSession.session.taOfficer || 'Chưa phân công'}>
+                          {popupCourseSession.session.taOfficer || 'Chưa phân công'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* For OPITO BOSIET, display sub-modules instructors list in View Mode */}
+                    {isSessionOpitoBosiet && (
+                      <div className="space-y-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 mt-1 text-left animate-fade-in font-sans">
+                        <div className="flex justify-between items-center border-b border-emerald-100 pb-1.5 mb-2">
+                          <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
+                            Chi tiết học phần nhỏ (BOSIET)
+                          </span>
+                          <span className="text-[9px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
+                            8 Môn học nhỏ
+                          </span>
+                        </div>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                          {["OSI", "HE", "SS", "FF", "FA", "HE (P)", "FF.SR (P)", "SS (P)"].map((subject) => {
+                            const val = popupCourseSession.session.subModules?.[subject];
+                            let instructor = "Chưa phân công";
+                            let date = "";
+                            let timeRange = "08:00 - 16:30";
+                            let classroom = "";
+                            let taOfficers: string[] = [];
+
+                            if (val) {
+                              if (typeof val === 'object') {
+                                instructor = val.instructor || "Chưa phân công";
+                                if (val.date) {
+                                  // Format to dd/mm/yyyy
+                                  const dParts = val.date.split('-');
+                                  date = dParts.length === 3 ? `${dParts[2]}/${dParts[1]}/${dParts[0]}` : val.date;
+                                }
+                                if (val.startTime && val.endTime) {
+                                  timeRange = `${val.startTime} - ${val.endTime}`;
+                                }
+                                classroom = val.classroom || "";
+                                taOfficers = (val as any).taOfficers || [];
+                              } else if (typeof val === 'string') {
+                                instructor = val;
+                              }
+                            }
+
+                            return (
+                              <div key={subject} className="bg-white border border-slate-100 rounded-lg p-2 space-y-1.5 shadow-3xs">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-extrabold text-slate-800 font-sans">Môn {subject}</span>
+                                  <span className="font-bold text-[#559b8c] font-sans" title={instructor}>{instructor}</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-500 font-medium">
+                                  <div className="flex items-center gap-1">
+                                    <span className="h-1 w-1 bg-slate-100 rounded-full"></span>
+                                    <span>Lớp: {classroom || popupCourseSession.session.classroom || "Chưa chọn"}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 justify-end">
+                                    <span>{timeRange}</span>
+                                  </div>
+                                  {date && (
+                                    <div className="col-span-2 flex items-center gap-1 py-0.5 mt-0.5 border-t border-slate-55 text-[9px] font-bold text-slate-400">
+                                      <span>Ngày học: </span>
+                                      <span className="text-slate-600">{date}</span>
+                                    </div>
+                                  )}
+                                  {taOfficers && taOfficers.length > 0 && (
+                                    <div className="col-span-2 flex items-center gap-1 flex-wrap mt-1 pt-1 border-t border-dashed border-slate-100 text-[10px]">
+                                      <span className="font-bold text-slate-450">Phụ giảng:</span>
+                                      <div className="flex flex-wrap gap-1">
+                                        {taOfficers.map((taName, idx) => (
+                                          <span key={idx} className="bg-amber-50 text-amber-805 text-[9px] px-1.5 py-0.5 rounded font-black border border-amber-100/50">
+                                            {taName}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
-                  </div>
 
-                  {/* For OPITO BOSIET, display sub-modules instructors list in View Mode */}
-                  {isSessionOpitoBosiet && (
-                    <div className="space-y-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 mt-1 text-left animate-fade-in font-sans">
-                      <div className="flex justify-between items-center border-b border-emerald-100 pb-1.5 mb-2">
-                        <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
-                          Chi tiết học phần nhỏ (BOSIET)
-                        </span>
-                        <span className="text-[9px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                          8 Môn học nhỏ
-                        </span>
-                      </div>
-                      <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-                        {["OSI", "HE", "SS", "FF", "FA", "HE (P)", "FF.SR (P)", "SS (P)"].map((subject) => {
-                          const val = popupCourseSession.session.subModules?.[subject];
-                          let instructor = "Chưa phân công";
-                          let date = "";
-                          let timeRange = "08:00 - 16:30";
-                          let classroom = "";
-                          let taOfficers: string[] = [];
+                    {isSessionHseMultiDay && (
+                      <div className="space-y-3 bg-[#eef7f5] p-4 rounded-xl border border-emerald-100/80 mt-1 text-left animate-fade-in font-sans">
+                        <div className="flex justify-between items-center border-b border-[#cde0dc] pb-1.5 mb-2">
+                          <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
+                            Chi tiết các ngày học (Khóa HSE Multi-day)
+                          </span>
+                          <span className="text-[9px] bg-emerald-100 text-emerald-850 px-2.5 py-0.5 rounded-full font-bold">
+                            {popupCourseSession.course.durationDays} Ngày học
+                          </span>
+                        </div>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                          {Array.from({ length: popupCourseSession.course.durationDays || 1 }).map((_, idx) => {
+                            const dayNum = idx + 1;
+                            const key = `Day ${dayNum}`;
+                            const val = popupCourseSession.session.subModules?.[key];
+                            
+                            let theoryClassroom = popupCourseSession.session.classroom || "Chưa chọn";
+                            let practiceArea = "Chưa đăng ký";
+                            let dateStr = calculateEndDate(popupCourseSession.session.startDate, dayNum);
 
-                          if (val) {
-                            if (typeof val === 'object') {
-                              instructor = val.instructor || "Chưa phân công";
+                            if (val && typeof val === 'object') {
+                              theoryClassroom = val.theoryClassroom || val.classroom || theoryClassroom;
+                              practiceArea = val.practiceArea || practiceArea;
                               if (val.date) {
-                                // Format to dd/mm/yyyy
-                                const dParts = val.date.split('-');
-                                date = dParts.length === 3 ? `${dParts[2]}/${dParts[1]}/${dParts[0]}` : val.date;
+                                dateStr = val.date;
                               }
-                              if (val.startTime && val.endTime) {
-                                timeRange = `${val.startTime} - ${val.endTime}`;
-                              }
-                              classroom = val.classroom || "";
-                              taOfficers = (val as any).taOfficers || [];
-                            } else if (typeof val === 'string') {
-                              instructor = val;
                             }
-                          }
 
-                          return (
-                            <div key={subject} className="bg-white border border-slate-100 rounded-lg p-2 space-y-1.5 shadow-3xs">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-extrabold text-slate-800">Môn {subject}</span>
-                                <span className="font-bold text-[#559b8c]" title={instructor}>{instructor}</span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-500 font-medium">
-                                <div className="flex items-center gap-1">
-                                  <span className="h-1 w-1 bg-slate-300 rounded-full"></span>
-                                  <span>Lớp: {classroom || popupCourseSession.session.classroom || "Chưa chọn"}</span>
+                            return (
+                              <div key={key} className="bg-white border border-slate-100 rounded-lg p-2.5 space-y-1 shadow-3xs">
+                                <div className="flex items-center justify-between text-xs border-b border-slate-50 pb-1 flex-row">
+                                  <span className="font-extrabold text-slate-800 font-sans uppercase text-[10px] tracking-wide">
+                                    Ngày {dayNum} — {formatDate(dateStr)}
+                                  </span>
                                 </div>
-                                <div className="flex items-center gap-1 justify-end">
-                                  <span>{timeRange}</span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-slate-605 font-semibold pt-1">
+                                  <div className="space-y-0.5 text-left">
+                                    <span className="text-[8.5px] text-slate-405 uppercase tracking-wider block">Phòng học lý thuyết:</span>
+                                    <span className="text-slate-805 font-bold block">{theoryClassroom}</span>
+                                  </div>
+                                  <div className="space-y-0.5 text-left">
+                                    <span className="text-[8.5px] text-slate-405 uppercase tracking-wider block font-sans">Khu học thực hành:</span>
+                                    <span className="text-slate-805 font-bold block font-sans">{practiceArea || '---'}</span>
+                                  </div>
                                 </div>
-                                {date && (
-                                  <div className="col-span-2 flex items-center gap-1 py-0.5 mt-0.5 border-t border-slate-50 text-[9px] font-bold text-slate-400">
-                                    <span>Ngày học: </span>
-                                    <span className="text-slate-600">{date}</span>
-                                  </div>
-                                )}
-                                {taOfficers && taOfficers.length > 0 && (
-                                  <div className="col-span-2 flex items-center gap-1 flex-wrap mt-1 pt-1 border-t border-dashed border-slate-100 text-[10px]">
-                                    <span className="font-bold text-slate-450">Phụ giảng:</span>
-                                    <div className="flex flex-wrap gap-1">
-                                      {taOfficers.map((taName, idx) => (
-                                        <span key={idx} className="bg-amber-50 text-amber-805 text-[9px] px-1.5 py-0.5 rounded font-black border border-amber-100/50">
-                                          {taName}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Classroom Details */}
-                  <div className="space-y-0.5 pt-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Địa điểm & Phòng học</span>
-                    <span className="text-xs font-bold text-slate-800">
-                      {popupCourseSession.session.classroom}
-                    </span>
-                  </div>
-
-                  {/* TG and TA */}
-                  <div className="grid grid-cols-2 gap-4 pt-1">
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Trợ giảng</span>
-                      <span id="popup-course-tg" className="text-xs font-semibold text-slate-755 block truncate" title={popupCourseSession.session.tgOfficer || 'Chưa phân công'}>
-                        {popupCourseSession.session.tgOfficer || 'Chưa phân công'}
-                      </span>
-                    </div>
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phụ giảng</span>
-                      <span id="popup-course-ta" className="text-xs font-semibold text-slate-755 block truncate" title={popupCourseSession.session.taOfficer || 'Chưa phân công'}>
-                        {popupCourseSession.session.taOfficer || 'Chưa phân công'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Number of Learners (replaces Estimate quantity of learners) */}
-                  <div className="border-t border-slate-50 pt-3">
-                    <div className="bg-slate-50 rounded-xl p-3 flex justify-between items-center flex-row">
-                      <div className="space-y-0.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-left">Sĩ số</span>
-                      </div>
-                      <div className="bg-emerald-100 text-emerald-800 font-extrabold text-xs px-2.5 py-1 rounded-lg whitespace-nowrap">
-                        {popupCourseSession.session.maxCapacity} Học viên
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}

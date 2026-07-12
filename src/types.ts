@@ -5,7 +5,7 @@
 
 export type CourseCategory = 'Safety' | 'Environment' | 'Emergency' | 'Health' | 'Compliance';
 
-export type CourseDomain = 'OPITO/GWO' | 'HSE' | 'Decree';
+export type CourseDomain = 'OPITO/GWO' | 'HSE' | 'Decree' | 'Formal';
 
 export type CourseLevel = 'Basic' | 'Intermediate' | 'Advanced';
 
@@ -20,6 +20,7 @@ export interface Course {
   durationDays: number;
   certificationEarned: string;
   domain?: CourseDomain;
+  periods?: number;
   quizQuestions?: QuizQuestion[];
 }
 
@@ -53,6 +54,8 @@ export interface CourseSession {
     endTime: string;
     classroom: string;
     taOfficers?: string[];
+    theoryClassroom?: string;
+    practiceArea?: string;
   }>;
 }
 
