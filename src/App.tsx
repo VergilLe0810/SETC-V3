@@ -874,6 +874,8 @@ export default function App() {
       id: `mem-${Date.now()}`,
       createdAt: new Date().toISOString()
     };
+    // Optimistic state update
+    setMembers(prev => [...prev.filter(m => m.email.toLowerCase() !== emailKey), newMember]);
     try {
       await setDoc(doc(db, "members", emailKey), cleanUndefined(newMember));
     } catch (e) {
@@ -892,6 +894,8 @@ export default function App() {
     if (isUndeletable) return;
 
     const emailKey = member.email.trim().toLowerCase();
+    // Optimistic state update
+    setMembers(prev => prev.filter(m => m.id !== id));
     try {
       await deleteDoc(doc(db, "members", emailKey));
     } catch (e) {
@@ -904,6 +908,15 @@ export default function App() {
     const oldMember = members.find(m => m.id === updatedMember.id);
     const oldEmailKey = oldMember ? oldMember.email.trim().toLowerCase() : '';
     const emailKey = updatedMember.email.trim().toLowerCase();
+    
+    // Optimistic state update
+    setMembers(prev => {
+      if (oldEmailKey && oldEmailKey !== emailKey) {
+        return prev.filter(m => m.email.trim().toLowerCase() !== oldEmailKey).concat(updatedMember);
+      }
+      return prev.map(m => m.id === updatedMember.id ? updatedMember : m);
+    });
+
     try {
       if (oldEmailKey && oldEmailKey !== emailKey) {
         await deleteDoc(doc(db, "members", oldEmailKey));
@@ -1044,7 +1057,7 @@ export default function App() {
     <div id="app-root-layout" className="min-h-screen bg-slate-50/70 font-sans text-slate-800 antialiased flex flex-col">
       {/* Premium Eco-Green Header bar with pristine shadows & minimal details */}
       <header className="bg-[#549B8C] border-b border-emerald-650/15 shrink-0 sticky top-0 z-40 shadow-[0_2px_12px_rgba(4,120,87,0.08)] text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center">
             {/* Elegant Static Logo & Branding Area */}
             <div className="flex items-center gap-3.5 p-1 rounded-2xl select-none">
@@ -1443,7 +1456,7 @@ export default function App() {
       </header>
 
       {/* Main Container Workspace */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full space-y-6">
+      <main className="flex-1 max-w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 w-full space-y-6">
         {/* Tab content renderer router */}
         <div id="tab-content-portal" className="transition-all duration-300">
           {activeTab === 'timeline' && (
@@ -1472,6 +1485,7 @@ export default function App() {
                 onAddSession={handleAddSession}
                 onRemoveSession={handleRemoveSession}
                 onUpdateSession={handleUpdateSession}
+                onUpdateCourse={handleUpdateCourse}
                 onClearAllSessions={handleClearAllSessions}
                 currentUserEmail={userEmail}
                 members={members}

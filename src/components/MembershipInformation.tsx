@@ -109,6 +109,55 @@ const getInitials = (name: string): string => {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
+export const ALL_DEPARTMENTS = [
+  'Ban Giám đốc',
+  'Tổ đào tạo',
+  'Tổ Thiết bị',
+  'Bãi chữa cháy',
+  'Tổ hành chính',
+  'Tổ Marketing'
+];
+
+export const getMemberDepartments = (m: Member): string[] => {
+  if (m.departments && m.departments.length > 0) {
+    return m.departments;
+  }
+  const pos = (m.position || '').trim().toLowerCase();
+  const name = (m.name || '').trim().toLowerCase();
+  
+  const depts: string[] = [];
+  
+  if (pos.includes('quản lý') || pos.includes('giám đốc') || pos.includes('lãnh đạo')) {
+    depts.push('Ban Giám đốc');
+  }
+  
+  if (pos.includes('đào tạo') || pos.includes('giảng viên') || name.includes('trình') || name.includes('long') || name.includes('thắng') || name.includes('vương') || name.includes('tú') || name.includes('chung') || name.includes('trung')) {
+    depts.push('Tổ đào tạo');
+  }
+  
+  if (pos.includes('bảo trì') || pos.includes('thiết bị') || name.includes('mạnh') || name.includes('buôn')) {
+    depts.push('Tổ Thiết bị');
+  }
+  
+  if (pos.includes('bãi cháy') || pos.includes('chữa cháy') || pos.includes('trực ban') || name.includes('hải') || name.includes('liễn') || name.includes('linh')) {
+    depts.push('Bãi chữa cháy');
+  }
+  
+  if (pos.includes('hành chính') || pos.includes('hỗ trợ') || name.includes('thảo') || name.includes('hạnh') || name.includes('nhung') || name.includes('lộc')) {
+    depts.push('Tổ hành chính');
+  }
+  
+  if (pos.includes('marketing') || pos.includes('truyền thông')) {
+    depts.push('Tổ Marketing');
+  }
+  
+  if (depts.length === 0) {
+    depts.push('Tổ hành chính');
+  }
+  
+  return depts;
+};
+
 export default function MembershipInformation({
   members,
   onAddMember,
@@ -146,18 +195,20 @@ export default function MembershipInformation({
     e.preventDefault();
     if (!roomName.trim() || !roomBuilding.trim()) return;
 
+    const capacityVal = isNaN(roomCapacity) ? 20 : roomCapacity;
+
     if (editingClassroomId) {
       onUpdateClassroom({
         id: editingClassroomId,
         name: roomName.trim(),
-        capacity: roomCapacity,
+        capacity: capacityVal,
         building: roomBuilding.trim()
       });
     } else {
       onAddClassroom({
         id: `room-${Date.now()}`,
         name: roomName.trim(),
-        capacity: roomCapacity,
+        capacity: capacityVal,
         building: roomBuilding.trim()
       });
     }
@@ -226,6 +277,10 @@ export default function MembershipInformation({
   const [authorizedLevel, setAuthorizedLevel] = useState<string>('level 1');
   const [showPassword, setShowPassword] = useState(false);
   
+  // Custom states for department categorization and selection
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [activeDeptFilter, setActiveDeptFilter] = useState<string>('Tất cả');
+
   // Validation and Feedback
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -237,8 +292,7 @@ export default function MembershipInformation({
     setDob(member.dob || '');
     
     const defaultPositions = [
-      "Quản lý", "Phó Quản lý", "Trưởng nhóm Trực ban", "Trưởng nhóm Đào tạo", 
-      "Trưởng nhóm Bảo trì", "Giảng viên", "Nhân viên Hành chính", "Nhân viên Bảo trì", "Nhân viên Hỗ trợ"
+      "Giám đốc", "Phó Giám đốc", "Tổ trưởng", "Giảng viên", "Nhân viên hỗ trợ", "Nhân viên hành chính"
     ];
     if (defaultPositions.includes(member.position)) {
       setPosition(member.position);
@@ -252,6 +306,7 @@ export default function MembershipInformation({
     setPhone(member.phone || '');
     setAuthorizedLevel(member.authorizedLevel || 'level 1');
     setPassword(member.password || '');
+    setSelectedDepartments(member.departments || getMemberDepartments(member));
     setShowPassword(false);
     setError(null);
     setSuccess(false);
@@ -270,6 +325,7 @@ export default function MembershipInformation({
     setPhone('');
     setPassword('');
     setAuthorizedLevel('level 1');
+    setSelectedDepartments([]);
     setShowPassword(false);
     setError(null);
     setSuccess(false);
@@ -340,6 +396,7 @@ export default function MembershipInformation({
           phone: phone.trim(),
           authorizedLevel: finalAuthorizedLevel,
           password: finalPassword,
+          departments: selectedDepartments,
           createdAt: existingMember?.createdAt || new Date().toISOString()
         });
       }
@@ -360,6 +417,7 @@ export default function MembershipInformation({
         setPhone('');
         setPassword('');
         setAuthorizedLevel('level 1');
+        setSelectedDepartments([]);
       }, 1000);
     } else {
       // Prevent duplicate email registration
@@ -377,7 +435,8 @@ export default function MembershipInformation({
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
         authorizedLevel,
-        password: finalPasswordForNew
+        password: finalPasswordForNew,
+        departments: selectedDepartments
       });
 
       setSuccessMessage('Đăng ký thành viên mới thành công!');
@@ -395,6 +454,7 @@ export default function MembershipInformation({
         setPhone('');
         setPassword('');
         setAuthorizedLevel('level 1');
+        setSelectedDepartments([]);
       }, 1000);
     }
 
@@ -417,22 +477,42 @@ export default function MembershipInformation({
       (m.phone || '').toLowerCase().includes(registrySearch.toLowerCase()) ||
       (m.authorizedLevel || '').toLowerCase().includes(registrySearch.toLowerCase());
   }).sort((a, b) => {
-    const levelOrder: Record<string, number> = {
-      'level 4': 4,
-      'level 3': 3,
-      'level 2': 2,
-      'level 1': 1
+    const getPositionRank = (pos: string): number => {
+      const p = (pos || '').trim().toLowerCase();
+      if (p === 'giám đốc') return 100;
+      if (p === 'phó giám đốc') return 90;
+      if (p === 'tổ trưởng') return 80;
+      if (p === 'giảng viên') return 70;
+      if (p === 'nhân viên hỗ trợ') return 60;
+      if (p === 'nhân viên hành chính') return 50;
+      
+      if (p.includes('giám đốc')) return 100;
+      if (p.includes('phó')) return 90;
+      if (p.includes('quản lý')) return 85;
+      if (p.includes('tổ trưởng') || p.includes('trưởng nhóm')) return 80;
+      if (p.includes('giảng viên')) return 70;
+      if (p.includes('hỗ trợ')) return 60;
+      if (p.includes('hành chính')) return 50;
+      return 0;
     };
-    const lvlA = levelOrder[a.authorizedLevel || 'level 1'] || 1;
-    const lvlB = levelOrder[b.authorizedLevel || 'level 1'] || 1;
-    if (lvlA !== lvlB) {
-      return lvlB - lvlA;
+
+    const rankA = getPositionRank(a.position);
+    const rankB = getPositionRank(b.position);
+    if (rankA !== rankB) {
+      return rankB - rankA;
     }
+
+    const timeA = a.dob ? new Date(a.dob).getTime() : Infinity;
+    const timeB = b.dob ? new Date(b.dob).getTime() : Infinity;
+    if (timeA !== timeB) {
+      return timeA - timeB;
+    }
+
     return a.name.localeCompare(b.name, 'vi');
   });
 
   return (
-    <div id="membership-info-container" className="space-y-6 w-full max-w-7xl mx-auto">
+    <div id="membership-info-container" className="space-y-6 w-full max-w-full mx-auto">
       
       {/* Sub-tab Switcher Header bar */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-3xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -443,7 +523,7 @@ export default function MembershipInformation({
           <div>
             <h2 className="text-sm font-extrabold text-slate-900">Thông tin Hệ thống</h2>
             <p className="text-[11px] text-slate-500">
-              {activeSection === 'classrooms' ? 'Giám sát và quản lý phòng học và tài nguyên phòng thực hành' : activeSection === 'courses' ? 'Danh sách tài liệu giảng dạy và quản lý chương trình đào tạo' : 'Quản lý danh sách nhân viên và thành viên học viện'}
+              {activeSection === 'classrooms' ? 'Giám sát và quản lý phòng học và tài nguyên phòng thực hành' : activeSection === 'courses' ? 'Danh sách tài liệu giảng dạy và quản lý chương trình đào tạo' : 'Quản lý thông tin và danh sách nhân sự học viện'}
             </p>
           </div>
         </div>
@@ -457,7 +537,7 @@ export default function MembershipInformation({
               onChange={(e) => setActiveSection(e.target.value as 'membership' | 'courses' | 'classrooms')}
               className="pl-3 pr-8 py-1.5 text-xs font-bold bg-white hover:bg-slate-55 border border-slate-200 hover:border-slate-300 rounded-md text-slate-800 focus:ring-1 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden transition-all cursor-pointer appearance-none min-w-[210px]"
             >
-              <option value="membership">👥 Thành viên & Nhân viên</option>
+              <option value="membership">👥 Thông tin Nhân sự</option>
               <option value="courses">📚 Khóa học & Chương trình</option>
               <option value="classrooms">🏢 Sơ đồ Phòng đào tạo</option>
             </select>
@@ -476,7 +556,7 @@ export default function MembershipInformation({
             <div className="px-5 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-50/50">
               <div className="text-left">
                 <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-2">
-                  Danh bạ Nhân sự & Thành viên
+                  Thông tin Nhân sự
                   <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200/40 font-mono">
                     {filteredMembers.length} Đã đăng ký
                   </span>
@@ -521,234 +601,271 @@ export default function MembershipInformation({
               </div>
             </div>
 
-            <div className="overflow-x-auto text-left">
+            {/* Department Filter Tabs */}
+            <div className="px-5 py-3 bg-slate-50/30 border-b border-slate-100 flex flex-wrap gap-1.5 items-center">
+              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider mr-1">Ban / Tổ:</span>
+              {['Tất cả', ...ALL_DEPARTMENTS].map((dept) => {
+                const isActive = activeDeptFilter === dept;
+                const count = dept === 'Tất cả' 
+                  ? filteredMembers.length 
+                  : filteredMembers.filter(m => getMemberDepartments(m).includes(dept)).length;
+                  
+                return (
+                  <button
+                    key={dept}
+                    type="button"
+                    onClick={() => setActiveDeptFilter(dept)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+                      isActive 
+                        ? 'bg-[#549B8C] border-[#549B8C] text-white shadow-3xs' 
+                        : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    <span>{dept}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="text-left">
               {filteredMembers.length === 0 ? (
                 <div className="p-12 text-center text-slate-400 italic font-serif">Không tìm thấy thành viên nào phù hợp.</div>
               ) : (
-                <>
-                  {/* Desktop view */}
-                  <table className="hidden md:table w-full text-left border-collapse min-w-[700px]">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase bg-slate-50/20">
-                        <th className="px-4 py-2.5">Họ và Tên</th>
-                        <th className="px-4 py-2.5">Ngày sinh</th>
-                        <th className="px-4 py-2.5">Địa chỉ Email</th>
-                        <th className="px-4 py-2.5">Số điện thoại</th>
-                        <th className="px-4 py-2.5 text-center">Cấp độ</th>
-                        <th className="px-4 py-2.5">Chức vụ</th>
-                        <th className="px-4 py-2.5 text-right">Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredMembers.map((member) => {
-                        const isSystemAuthAdmin = member.email.toLowerCase() === authorizedEmail.toLowerCase() || member.email.toLowerCase() === 'setcadmin' || member.email.toLowerCase() === 'setcadmin@safetycentre.org';
-                        const colorMap: Record<string, string> = {
-                          'level 4': 'bg-blue-50 text-blue-700 border-blue-200/50',
-                          'level 3': 'bg-amber-50 text-amber-700 border-amber-200/50',
-                          'level 2': 'bg-teal-50 text-teal-700 border-teal-200/50',
-                          'level 1': 'bg-slate-100 text-slate-600 border-slate-200/50',
-                        };
-                        const levelClass = colorMap[member.authorizedLevel || 'level 1'] || 'bg-slate-100 text-slate-600 border-slate-200/50';
+                <div className="divide-y divide-slate-150">
+                  {(() => {
+                    const deptsToRender = activeDeptFilter === 'Tất cả' ? ALL_DEPARTMENTS : [activeDeptFilter];
+                    const hasAnyMembers = deptsToRender.some(dept => filteredMembers.filter(m => getMemberDepartments(m).includes(dept)).length > 0);
 
-                        return (
-                          <tr key={member.id} className={`text-xs hover:bg-slate-55/20 transition-colors ${isSystemAuthAdmin ? 'bg-emerald-50/15' : ''}`}>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className="w-6.5 h-6.5 rounded-full flex items-center justify-center font-bold text-[9px] bg-slate-150 text-slate-750 overflow-hidden shrink-0">
-                                  {member.avatar ? (
-                                    <img src={member.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
-                                  ) : (
-                                    getInitials(member.name)
-                                  )}
-                                </div>
-                                <span className="font-bold text-slate-900">{member.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-slate-600">{formatDate(member.dob)}</td>
-                            <td className="px-4 py-3 font-mono text-slate-500">
-                              <div className="flex items-center gap-1 group">
-                                <span className="break-all">{member.email}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopy(member.email, `${member.id}-email`)}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
-                                >
-                                  {copiedKey === `${member.id}-email` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                                </button>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-slate-600">
-                              {member.phone ? (
-                                <div className="flex items-center gap-1 group">
-                                  <span>{member.phone}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopy(member.phone || '', `${member.id}-phone`)}
-                                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
-                                  >
-                                    {copiedKey === `${member.id}-phone` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                                  </button>
-                                </div>
-                              ) : '-'}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`inline-block px-1.5 py-0.5 rounded-full text-[8.5px] font-bold border uppercase ${levelClass}`}>
-                                {getLevelLabel(member.authorizedLevel || 'level 1')}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 font-semibold text-slate-600">{member.position}</td>
-                            <td className="px-4 py-3 text-right">
-                              <div className="inline-flex gap-2 justify-end">
-                                {(hasLevel4Access || member.email.toLowerCase() === currentUserEmail.toLowerCase()) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => startEdit(member)}
-                                    className="p-1.5 text-slate-550 hover:text-[#549B8C] hover:bg-emerald-50 rounded-lg transition-colors border border-transparent hover:border-emerald-100 cursor-pointer"
-                                    title="Cập nhật Thông tin Thành viên"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </button>
-                                )}
-                                {hasLevel4Access && (
-                                  isSystemAuthAdmin ? (
-                                    <button
-                                      type="button"
-                                      disabled
-                                      className="p-1.5 text-slate-300 bg-slate-50 border border-slate-100 rounded-lg cursor-not-allowed"
-                                      title="Tài khoản Hệ thống Dự phòng (Không thể xóa)"
-                                    >
-                                      <Lock className="h-4 w-4" />
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => setMemberToDelete(member)}
-                                      className="p-1.5 text-slate-550 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100 cursor-pointer"
-                                      title="Xóa Thông tin Thành viên"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </button>
-                                  )
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                    if (!hasAnyMembers) {
+                      return <div className="p-12 text-center text-slate-400 italic font-serif">Không tìm thấy thành viên nào trong mục này.</div>;
+                    }
 
-                  {/* Mobile responsive view */}
-                  <div className="md:hidden space-y-3.5">
-                    {filteredMembers.map((member) => {
-                      const isSystemAuthAdmin = member.email.toLowerCase() === authorizedEmail.toLowerCase() || member.email.toLowerCase() === 'setcadmin' || member.email.toLowerCase() === 'setcadmin@safetycentre.org';
-                      const colorMap: Record<string, string> = {
-                        'level 4': 'bg-blue-50 text-blue-700 border-blue-200/50',
-                        'level 3': 'bg-amber-50 text-amber-700 border-amber-200/50',
-                        'level 2': 'bg-teal-50 text-teal-700 border-teal-200/50',
-                        'level 1': 'bg-slate-100 text-slate-600 border-slate-200/50',
-                      };
-                      const levelClass = colorMap[member.authorizedLevel || 'level 1'] || 'bg-slate-100 text-slate-600 border-slate-200/50';
+                    return deptsToRender.map((dept) => {
+                      const deptMembers = filteredMembers.filter(m => getMemberDepartments(m).includes(dept));
+                      if (deptMembers.length === 0) return null;
 
                       return (
-                        <div 
-                          key={member.id} 
-                          className={`bg-white border text-left border-slate-200 rounded-xl p-4 shadow-3xs space-y-3 hover:shadow-2xs transition-all duration-150 ${isSystemAuthAdmin ? 'ring-1 ring-emerald-400/50 bg-emerald-50/15' : ''}`}
-                        >
-                          <div className="flex items-center justify-between gap-2 border-b border-slate-105 pb-2">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-slate-150 text-slate-750 overflow-hidden shrink-0">
-                                {member.avatar ? (
-                                  <img src={member.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
-                                ) : (
-                                  getInitials(member.name)
-                                )}
-                              </div>
-                              <div className="text-left">
-                                <span className="font-bold text-slate-900 block text-xs">{member.name}</span>
-                                <span className="text-[10.5px] font-semibold text-slate-500">{member.position}</span>
-                              </div>
-                            </div>
-
-                            <span className={`inline-block px-1.5 py-0.5 rounded-full text-[8.5px] font-bold border uppercase leading-none ${levelClass}`}>
-                              {getLevelLabel(member.authorizedLevel || 'level 1')}
-                            </span>
+                        <div key={dept} className="p-5">
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-xs font-black text-[#549B8C] uppercase tracking-wider flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full bg-[#549B8C]"></span>
+                              {dept}
+                              <span className="bg-slate-100 text-slate-650 text-[10.5px] font-bold px-2 py-0.5 rounded-full font-mono">
+                                {deptMembers.length} nhân sự
+                              </span>
+                            </h4>
                           </div>
 
-                          <div className="space-y-2 text-xs text-slate-600">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-slate-400 font-semibold text-[10.5px]">Ngày sinh:</span>
-                              <span className="font-mono text-slate-850 font-bold">{formatDate(member.dob)}</span>
-                            </div>
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-slate-400 font-semibold text-[10.5px]">Email:</span>
-                              <div className="flex items-center gap-1 group">
-                                <span className="break-all font-mono text-[11px] text-slate-800">{member.email}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopy(member.email, `${member.id}-email-mb`)}
-                                  className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
+                          {/* Desktop view */}
+                          <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[700px] table-fixed">
+                              <thead>
+                                <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase bg-slate-50/20">
+                                  <th className="px-4 py-2.5 w-[22%]">Họ và Tên</th>
+                                  <th className="px-4 py-2.5 w-[13%]">Ngày sinh</th>
+                                  <th className="px-4 py-2.5 w-[28%]">Địa chỉ Email</th>
+                                  <th className="px-4 py-2.5 w-[16%]">Số điện thoại</th>
+                                  <th className="px-4 py-2.5 w-[13%]">Chức vụ</th>
+                                  <th className="px-4 py-2.5 w-[8%] text-right">Thao tác</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {deptMembers.map((member) => {
+                                  const isSystemAuthAdmin = member.email.toLowerCase() === authorizedEmail.toLowerCase() || member.email.toLowerCase() === 'setcadmin' || member.email.toLowerCase() === 'setcadmin@safetycentre.org';
+
+                                  return (
+                                    <tr key={member.id} className={`text-xs hover:bg-slate-55/20 transition-colors ${isSystemAuthAdmin ? 'bg-emerald-50/15' : ''}`}>
+                                      <td className="px-4 py-3">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-6.5 h-6.5 rounded-full flex items-center justify-center font-bold text-[9px] bg-slate-150 text-slate-750 overflow-hidden shrink-0">
+                                            {member.avatar ? (
+                                              <img src={member.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                                            ) : (
+                                              getInitials(member.name)
+                                            )}
+                                          </div>
+                                          <span className="font-bold text-slate-900">{member.name}</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 font-mono text-slate-600">{formatDate(member.dob)}</td>
+                                      <td className="px-4 py-3 font-mono text-slate-500">
+                                        <div className="flex items-center gap-1 group">
+                                          <span className="break-all">{member.email}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCopy(member.email, `${member.id}-email`)}
+                                            className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
+                                          >
+                                            {copiedKey === `${member.id}-email` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                                          </button>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 font-mono text-slate-600">
+                                        {member.phone ? (
+                                          <div className="flex items-center gap-1 group">
+                                            <span>{member.phone}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleCopy(member.phone || '', `${member.id}-phone`)}
+                                              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
+                                            >
+                                              {copiedKey === `${member.id}-phone` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                                            </button>
+                                          </div>
+                                        ) : '-'}
+                                      </td>
+                                      <td className="px-4 py-3 font-semibold text-slate-600">{member.position}</td>
+                                      <td className="px-4 py-3 text-right">
+                                        <div className="inline-flex gap-2 justify-end">
+                                          {(hasLevel4Access || member.email.toLowerCase() === currentUserEmail.toLowerCase()) && (
+                                            <button
+                                              type="button"
+                                              onClick={() => startEdit(member)}
+                                              className="p-1.5 text-slate-550 hover:text-[#549B8C] hover:bg-emerald-50 rounded-lg transition-colors border border-transparent hover:border-emerald-100 cursor-pointer"
+                                              title="Cập nhật Thông tin Thành viên"
+                                            >
+                                              <Pencil className="h-4 w-4" />
+                                            </button>
+                                          )}
+                                          {hasLevel4Access && (
+                                            isSystemAuthAdmin ? (
+                                              <button
+                                                type="button"
+                                                disabled
+                                                className="p-1.5 text-slate-300 bg-slate-50 border border-slate-100 rounded-lg cursor-not-allowed"
+                                                title="Tài khoản Hệ thống Dự phòng (Không thể xóa)"
+                                              >
+                                                <Lock className="h-4 w-4" />
+                                              </button>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() => setMemberToDelete(member)}
+                                                className="p-1.5 text-slate-550 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100 cursor-pointer"
+                                                title="Xóa Thông tin Thành viên"
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </button>
+                                            )
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Mobile responsive view */}
+                          <div className="md:hidden space-y-3.5">
+                            {deptMembers.map((member) => {
+                              const isSystemAuthAdmin = member.email.toLowerCase() === authorizedEmail.toLowerCase() || member.email.toLowerCase() === 'setcadmin' || member.email.toLowerCase() === 'setcadmin@safetycentre.org';
+
+                              return (
+                                <div 
+                                  key={member.id} 
+                                  className={`bg-white border text-left border-slate-200 rounded-xl p-4 shadow-3xs space-y-3 hover:shadow-2xs transition-all duration-150 ${isSystemAuthAdmin ? 'ring-1 ring-emerald-400/50 bg-emerald-50/15' : ''}`}
                                 >
-                                  {copiedKey === `${member.id}-email-mb` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                                </button>
-                              </div>
-                            </div>
-                            {member.phone && (
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-slate-400 font-semibold text-[10.5px]">Điện thoại:</span>
-                                <div className="flex items-center gap-1 group">
-                                  <span className="font-mono text-[11px] text-slate-800">{member.phone}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopy(member.phone || '', `${member.id}-phone-mb`)}
-                                    className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
-                                  >
-                                    {copiedKey === `${member.id}-phone-mb` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                                  </button>
+                                  <div className="flex items-center justify-between gap-2 border-b border-slate-105 pb-2">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-slate-150 text-slate-750 overflow-hidden shrink-0">
+                                        {member.avatar ? (
+                                          <img src={member.avatar} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                                        ) : (
+                                          getInitials(member.name)
+                                        )}
+                                      </div>
+                                      <div className="text-left">
+                                        <span className="font-bold text-slate-900 block text-xs">{member.name}</span>
+                                        <span className="text-[10.5px] font-semibold text-slate-500">{member.position}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-2 text-xs text-slate-600">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="text-slate-400 font-semibold text-[10.5px]">Ngày sinh:</span>
+                                      <span className="font-mono text-slate-850 font-bold">{formatDate(member.dob)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="text-slate-400 font-semibold text-[10.5px]">Email:</span>
+                                      <div className="flex items-center gap-1 group">
+                                        <span className="break-all font-mono text-[11px] text-slate-800">{member.email}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCopy(member.email, `${member.id}-email-mb`)}
+                                          className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
+                                        >
+                                          {copiedKey === `${member.id}-email-mb` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {member.phone && (
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="text-slate-400 font-semibold text-[10.5px]">Điện thoại:</span>
+                                        <div className="flex items-center gap-1 group">
+                                          <span className="font-mono text-[11px] text-slate-800">{member.phone}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCopy(member.phone || '', `${member.id}-phone-mb`)}
+                                            className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition cursor-pointer"
+                                          >
+                                            {copiedKey === `${member.id}-phone-mb` ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Quick management action block */}
+                                  <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
+                                    {(hasLevel4Access || member.email.toLowerCase() === currentUserEmail.toLowerCase()) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => startEdit(member)}
+                                        className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold text-slate-705 hover:text-[#549B8C] hover:bg-emerald-50 rounded-lg transition-colors border border-slate-200 hover:border-emerald-200 cursor-pointer"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                        <span>Chỉnh sửa</span>
+                                      </button>
+                                    )}
+                                    {hasLevel4Access && (
+                                      isSystemAuthAdmin ? (
+                                        <button
+                                          type="button"
+                                          disabled
+                                          className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold text-slate-300 bg-slate-50 border border-slate-100 rounded-lg cursor-not-allowed"
+                                        >
+                                          <Lock className="h-3.5 w-3.5" />
+                                          <span>Hệ thống</span>
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => setMemberToDelete(member)}
+                                          className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold text-rose-700 hover:text-rose-800 hover:bg-rose-50 border border-transparent hover:border-rose-250 rounded-lg transition-colors cursor-pointer"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                          <span>Xóa</span>
+                                        </button>
+                                      )
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Quick management action block */}
-                          <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-2.5">
-                            {(hasLevel4Access || member.email.toLowerCase() === currentUserEmail.toLowerCase()) && (
-                              <button
-                                type="button"
-                                onClick={() => startEdit(member)}
-                                className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold text-slate-705 hover:text-[#549B8C] hover:bg-emerald-50 rounded-lg transition-colors border border-slate-200 hover:border-emerald-200 cursor-pointer"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                                <span>Chỉnh sửa</span>
-                              </button>
-                            )}
-                            {hasLevel4Access && (
-                              isSystemAuthAdmin ? (
-                                <button
-                                  type="button"
-                                  disabled
-                                  className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold text-slate-300 bg-slate-50 border border-slate-100 rounded-lg cursor-not-allowed"
-                                >
-                                  <Lock className="h-3.5 w-3.5" />
-                                  <span>Hệ thống</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setMemberToDelete(member)}
-                                  className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold text-rose-700 hover:text-rose-800 hover:bg-rose-50 border border-transparent hover:border-rose-250 rounded-lg transition-colors cursor-pointer"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  <span>Xóa</span>
-                                </button>
-                              )
-                            )}
+                              );
+                            })}
                           </div>
                         </div>
                       );
-                    })}
-                  </div>
-                </>
+                    });
+                  })()}
+                </div>
               )}
             </div>
           </div>
@@ -954,18 +1071,7 @@ export default function MembershipInformation({
 
               {/* Form Content */}
               <form onSubmit={handleSubmit} className="p-5 space-y-4">
-                {editingId && (
-                  <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-center justify-between flex-row">
-                    <span className="font-semibold">Đang chỉnh sửa nhân sự hiện hữu</span>
-                    <button 
-                      type="button" 
-                      onClick={cancelEdit} 
-                      className="text-[10px] bg-white border border-amber-250 hover:bg-slate-50 px-2 py-0.5 rounded-md font-bold transition-colors cursor-pointer"
-                    >
-                      Hủy bỏ
-                    </button>
-                  </div>
-                )}
+
 
                 {error && (
                   <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-[11px] text-rose-700 flex items-start gap-2 text-left">
@@ -1099,15 +1205,12 @@ export default function MembershipInformation({
                       className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 outline-hidden bg-white text-slate-800 transition-all cursor-pointer font-semibold"
                     >
                       <option value="">Chọn chức danh...</option>
-                      <option value="Quản lý">Quản lý</option>
-                      <option value="Phó Quản lý">Phó Quản lý</option>
-                      <option value="Trưởng nhóm Trực ban">Trưởng nhóm Trực ban</option>
-                      <option value="Trưởng nhóm Đào tạo">Trưởng nhóm Đào tạo</option>
-                      <option value="Trưởng nhóm Bảo trì">Trưởng nhóm Bảo trì</option>
+                      <option value="Giám đốc">Giám đốc</option>
+                      <option value="Phó Giám đốc">Phó Giám đốc</option>
+                      <option value="Tổ trưởng">Tổ trưởng</option>
                       <option value="Giảng viên">Giảng viên</option>
-                      <option value="Nhân viên Hành chính">Nhân viên Hành chính</option>
-                      <option value="Nhân viên Bảo trì">Nhân viên Bảo trì</option>
-                      <option value="Nhân viên Hỗ trợ">Nhân viên Hỗ trợ</option>
+                      <option value="Nhân viên hỗ trợ">Nhân viên hỗ trợ</option>
+                      <option value="Nhân viên hành chính">Nhân viên hành chính</option>
                       {customPositions.map(pos => (
                         <option key={pos} value={pos}>{pos}</option>
                       ))}
@@ -1129,6 +1232,43 @@ export default function MembershipInformation({
                     />
                   </div>
                 )}
+
+                {/* Multi-select department checkboxes */}
+                <div className="space-y-2 border-t border-slate-100 pt-3">
+                  <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider block">
+                    Ban / Tổ công tác <span className="text-emerald-700 lowercase italic font-normal">(chọn một hoặc nhiều)</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 border border-slate-100 rounded-xl">
+                    {ALL_DEPARTMENTS.map(dept => {
+                      const isSelected = selectedDepartments.includes(dept);
+                      return (
+                        <button
+                          key={dept}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedDepartments(prev => prev.filter(d => d !== dept));
+                            } else {
+                              setSelectedDepartments(prev => [...prev, dept]);
+                            }
+                          }}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-emerald-50 border-emerald-400 text-emerald-800 shadow-3xs'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${
+                            isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300'
+                          }`}>
+                            {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                          </div>
+                          <span className="text-[11px] font-bold truncate">{dept}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 flex-row">
                   <button
@@ -1265,7 +1405,7 @@ export default function MembershipInformation({
                     required
                     min={1}
                     max={200}
-                    value={roomCapacity}
+                    value={isNaN(roomCapacity) ? '' : roomCapacity}
                     onChange={(e) => setRoomCapacity(parseInt(e.target.value, 10))}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-[#549B8C] focus:ring-1 focus:ring-[#549B8C]/30 outline-none transition-all text-slate-950 font-medium"
                   />

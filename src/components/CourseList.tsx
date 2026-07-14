@@ -455,7 +455,7 @@ export default function CourseList({
   };
 
   return (
-    <div id="course-database-container" className="w-full max-w-7xl mx-auto space-y-6">
+    <div id="course-database-container" className="w-full max-w-full mx-auto space-y-6">
       
       {/* Top Banner Success message */}
       <AnimatePresence>

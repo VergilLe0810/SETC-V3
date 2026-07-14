@@ -39,12 +39,12 @@ service cloud.firestore {
     function isValidSession(data) {
       return data.id is string && data.id.size() > 0 &&
              data.courseId is string && data.courseId.size() > 0 &&
-             data.startDate is string && data.startDate.size() == 10 &&
-             data.endDate is string && data.endDate.size() == 10 &&
-             data.startTime is string && data.startTime.size() == 5 &&
-             data.endTime is string && data.endTime.size() == 5 &&
-             data.instructor is string && data.instructor.size() > 0 &&
-             data.classroom is string && data.classroom.size() > 0 &&
+             data.startDate is string &&
+             data.endDate is string &&
+             data.startTime is string &&
+             data.endTime is string &&
+             data.instructor is string &&
+             data.classroom is string &&
              data.maxCapacity is int && data.maxCapacity > 0 &&
              data.enrolledIds is list;
     }
@@ -75,8 +75,7 @@ service cloud.firestore {
       allow create: if isValidId(memberEmail) && isValidMember(request.resource.data);
       allow update: if isValidMember(request.resource.data) && (
         request.resource.data.email == resource.data.email &&
-        request.resource.data.authorizedLevel == resource.data.authorizedLevel &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'dob', 'avatar', 'phone', 'password'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'dob', 'avatar', 'phone', 'password', 'position', 'authorizedLevel', 'departments'])
       );
       allow delete: if true;
     }

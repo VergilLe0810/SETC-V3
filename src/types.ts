@@ -34,6 +34,8 @@ export interface QuizQuestion {
 export interface CourseSession {
   id: string;
   courseId: string;
+  sessionCode?: string;
+  sessionType?: string;
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   startTime: string; // HH:MM
@@ -49,13 +51,21 @@ export interface CourseSession {
   domain?: CourseDomain;
   subModules?: Record<string, string | {
     instructor: string;
+    morningInstructors?: string[];
+    afternoonInstructors?: string[];
     date: string;
     startTime: string;
     endTime: string;
     classroom: string;
     taOfficers?: string[];
+    tgOfficers?: string[];
+    morningTgOfficers?: string[];
+    afternoonTgOfficers?: string[];
+    taOfficer?: string;
+    tgOfficer?: string;
     theoryClassroom?: string;
     practiceArea?: string;
+    sessionType?: string;
   }>;
 }
 
@@ -92,6 +102,7 @@ export interface Member {
   phone?: string;
   authorizedLevel?: string;
   password?: string;
+  departments?: string[];
 }
 
 export interface Task {

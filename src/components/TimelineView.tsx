@@ -10,6 +10,7 @@ import { Course, CourseSession, Member, CourseDomain, Classroom } from '../types
 import { getSessionStatus, CLASSROOMS } from '../data';
 import { getDaysForMonth } from '../utils/dateUtils';
 import { formatDate } from '../utils/date';
+import { getMemberDepartments } from './MembershipInformation';
 
 interface TimelineViewProps {
   courses: Course[];
@@ -24,6 +25,7 @@ interface TimelineViewProps {
   onAddSession?: (newSession: CourseSession) => void;
   onRemoveSession?: (sessionId: string) => void;
   onUpdateSession?: (updatedSession: CourseSession) => void;
+  onUpdateCourse?: (updatedCourse: Course) => void;
   onClearAllSessions?: () => void;
   currentUserEmail: string;
   members: Member[];
@@ -93,6 +95,18 @@ const calculateEndDate = (startDateStr: string, duration: number): string => {
   return `${year}-${month}-${day}`;
 };
 
+const getBaseInstructorName = (fullname: string): string => {
+  if (!fullname) return '';
+  return fullname.split(' (')[0].trim().toLowerCase();
+};
+
+const hasInstructorOverlap = (inst1: string, inst2: string): boolean => {
+  if (!inst1 || !inst2) return false;
+  const parts1 = inst1.split(/[,;]+/).map(p => getBaseInstructorName(p)).filter(Boolean);
+  const parts2 = inst2.split(/[,;]+/).map(p => getBaseInstructorName(p)).filter(Boolean);
+  return parts1.some(p1 => parts2.some(p2 => p1 === p2 || p1.includes(p2) || p2.includes(p1)));
+};
+
 export default function TimelineView({ 
   courses, 
   sessions, 
@@ -100,6 +114,7 @@ export default function TimelineView({
   onAddSession,
   onRemoveSession,
   onUpdateSession,
+  onUpdateCourse,
   onClearAllSessions,
   currentUserEmail,
   members,
@@ -124,52 +139,265 @@ export default function TimelineView({
 
   // States & helper calculations for Weekly Personnel Tracking Grid
   const [trackingBaseDate, setTrackingBaseDate] = useState<Date>(() => new Date());
+  const [selCourseId, setSelCourseId] = useState<string>(courses[0]?.id || '');
+
+  const uniqueCourseCodes = useMemo(() => {
+    const codesSet = new Set<string>();
+    courses.forEach(c => {
+      if (c.code) {
+        codesSet.add(c.code.trim().toUpperCase());
+      }
+    });
+    sessions.forEach(session => {
+      const course = courses.find(c => c.id === session.courseId);
+      if (course && course.code) {
+        codesSet.add(course.code.trim().toUpperCase());
+      }
+    });
+    return Array.from(codesSet).sort();
+  }, [sessions, courses]);
+
+  const courseCodeToColor = useMemo(() => {
+    const mapping: Record<string, string> = {};
+    const palettes = [
+      'bg-indigo-50 border-indigo-250 text-indigo-900 font-bold shadow-xs',
+      'bg-amber-50 border-amber-300 text-amber-950 font-bold shadow-xs',
+      'bg-teal-50 border-teal-250 text-teal-900 font-bold shadow-xs',
+      'bg-rose-50 border-rose-250 text-rose-900 font-bold shadow-xs',
+      'bg-violet-50 border-violet-250 text-violet-900 font-bold shadow-xs',
+      'bg-emerald-50 border-emerald-250 text-emerald-950 font-bold shadow-xs',
+      'bg-fuchsia-50 border-fuchsia-250 text-fuchsia-950 font-bold shadow-xs',
+      'bg-cyan-50 border-cyan-250 text-cyan-950 font-bold shadow-xs',
+      'bg-sky-50 border-sky-250 text-sky-900 font-bold shadow-xs',
+      'bg-lime-50 border-lime-300 text-lime-950 font-bold shadow-xs',
+      'bg-pink-50 border-pink-250 text-pink-900 font-bold shadow-xs',
+      'bg-orange-50 border-orange-200 text-orange-950 font-bold shadow-xs',
+      'bg-blue-50 border-blue-250 text-blue-900 font-bold shadow-xs',
+      'bg-yellow-50 border-yellow-300 text-yellow-950 font-bold shadow-xs',
+      'bg-red-50 border-red-250 text-red-950 font-bold shadow-xs',
+      'bg-slate-100 border-slate-300 text-slate-900 font-bold shadow-xs',
+      'bg-indigo-100/80 border-indigo-300 text-indigo-950 font-bold shadow-xs',
+      'bg-teal-100/80 border-teal-300 text-teal-950 font-bold shadow-xs',
+      'bg-rose-100/80 border-rose-300 text-rose-950 font-bold shadow-xs',
+      'bg-violet-100/80 border-violet-300 text-violet-950 font-bold shadow-xs',
+      'bg-emerald-100/80 border-emerald-300 text-emerald-950 font-bold shadow-xs',
+      'bg-sky-100/80 border-sky-300 text-sky-950 font-bold shadow-xs',
+      'bg-orange-100/80 border-orange-300 text-orange-950 font-bold shadow-xs',
+      'bg-fuchsia-100/80 border-fuchsia-300 text-fuchsia-950 font-bold shadow-xs',
+    ];
+
+    uniqueCourseCodes.forEach((code, index) => {
+      mapping[code] = palettes[index % palettes.length];
+    });
+
+    return mapping;
+  }, [uniqueCourseCodes]);
+
+  const formatAssignmentStrings = (rawStrings: string[]): string[] => {
+    // Separate T.FOET special strings ending with GV or gv (case insensitive)
+    const tfoetStrings = rawStrings.filter(str => str.toUpperCase().includes('T.FOET') && str.toLowerCase().endsWith(', gv'));
+    const otherStrings = rawStrings.filter(str => !(str.toUpperCase().includes('T.FOET') && str.toLowerCase().endsWith(', gv')));
+
+    const parsed = otherStrings.map(str => {
+      const cleanStr = str.replace(/[()]/g, '');
+      const parts = cleanStr.split(', ');
+      const courseCode = parts[0];
+      const role = parts[1] || '';
+      return { courseCode, role };
+    });
+
+    const courseToRoles: Record<string, string[]> = {};
+    parsed.forEach(({ courseCode, role }) => {
+      if (!courseToRoles[courseCode]) {
+        courseToRoles[courseCode] = [];
+      }
+      if (!courseToRoles[courseCode].includes(role)) {
+        courseToRoles[courseCode].push(role);
+      }
+    });
+
+    const rolesToCourses: Record<string, string[]> = {};
+    Object.entries(courseToRoles).forEach(([courseCode, roles]) => {
+      const sortedRolesKey = [...roles].sort().join(' + ');
+      if (!rolesToCourses[sortedRolesKey]) {
+        rolesToCourses[sortedRolesKey] = [];
+      }
+      rolesToCourses[sortedRolesKey].push(courseCode);
+    });
+
+    const formatted: string[] = [];
+    Object.entries(rolesToCourses).forEach(([rolesKey, courses]) => {
+      const rolesList = rolesKey.split(' + ');
+      if (rolesList.length > 1) {
+        if (courses.length > 1) {
+          formatted.push(`${rolesKey}, ${courses.join(' + ')}`);
+        } else {
+          formatted.push(`${courses[0]}, ${rolesKey}`);
+        }
+      } else {
+        courses.forEach(c => {
+          formatted.push(`${c}, ${rolesKey}`);
+        });
+      }
+    });
+    return [...formatted, ...tfoetStrings];
+  };
+
+  const getCourseBadgeColor = (assign: string): string => {
+    // Extract the full class/course code from the assignment string, e.g. "K68 OSI" or "OSI"
+    const classKey = assign.split(',')[0].trim().toUpperCase();
+    
+    // Find matching course code in courses list
+    const matchedCourse = courses.find(c => c.code && classKey.includes(c.code.toUpperCase()));
+    const courseCodeKey = matchedCourse ? matchedCourse.code.toUpperCase() : classKey;
+
+    if (courseCodeToColor[courseCodeKey]) {
+      return courseCodeToColor[courseCodeKey];
+    }
+
+    // Fallback: simple hash coloring if not found
+    const fallbackPalettes = [
+      'bg-indigo-50 border-indigo-250 text-indigo-900 font-bold shadow-xs',
+      'bg-amber-50 border-amber-300 text-amber-950 font-bold shadow-xs',
+      'bg-teal-50 border-teal-250 text-teal-900 font-bold shadow-xs',
+      'bg-rose-50 border-rose-250 text-rose-900 font-bold shadow-xs',
+      'bg-violet-50 border-violet-250 text-violet-900 font-bold shadow-xs',
+      'bg-emerald-50 border-emerald-250 text-emerald-950 font-bold shadow-xs',
+      'bg-fuchsia-50 border-fuchsia-250 text-fuchsia-950 font-bold shadow-xs',
+      'bg-cyan-50 border-cyan-250 text-cyan-950 font-bold shadow-xs',
+      'bg-sky-50 border-sky-250 text-sky-900 font-bold shadow-xs',
+      'bg-lime-50 border-lime-300 text-lime-950 font-bold shadow-xs',
+      'bg-pink-50 border-pink-250 text-pink-900 font-bold shadow-xs',
+    ];
+
+    const getHashCode = (str: string): number => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      return Math.abs(hash);
+    };
+
+    const hashValue = getHashCode(courseCodeKey);
+    return fallbackPalettes[hashValue % fallbackPalettes.length];
+  };
 
   const sortedTrackingMembers = useMemo(() => {
-    return members.filter(m => {
-      const isCreator = m.id === 'mem-creator' || 
-                        m.email.toLowerCase() === 'setcadmin' || 
-                        m.email.toLowerCase() === 'setcadmin@safetycentre.org';
-      return !isCreator;
-    }).sort((a, b) => {
-      const getPositionPriority = (pos: string = ''): number => {
-        const norm = pos.trim().toLowerCase();
-        
-        // Các nhân sự thuộc trực ban và hành chính sẽ hiển thị ở cuối cùng của bảng
-        const isTrucBan = norm.includes('trực ban');
-        const isHanhChinh = norm.includes('hành chính');
-        
-        if (isTrucBan) return 90;
-        if (isHanhChinh) return 91;
+    const allowedDepts = [
+      'Ban Giám đốc',
+      'Tổ đào tạo',
+      'Tổ Thiết bị',
+      'Tổ hành chính'
+    ];
 
-        if (norm === 'quản lý') return 1;
-        if (norm === 'phó quản lý') return 2;
-        if (norm === 'trưởng bãi cháy' || norm.includes('bãi cháy')) return 3;
-        if (norm === 'trưởng đào tạo' || norm.includes('đào tạo')) return 4;
-        if (norm === 'giảng viên') return 5;
-        if (norm === 'nhân viên bảo trì' || norm.includes('bảo trì')) return 6;
-        if (norm === 'nhân viên hỗ trợ' || norm.includes('hỗ trợ')) return 7;
-        
-        return 50; // các vị trí khác
-      };
-
-      const prioA = getPositionPriority(a.position);
-      const prioB = getPositionPriority(b.position);
-
-      if (prioA !== prioB) {
-        return prioA - prioB;
+    const getPrimaryDeptIndex = (m: Member): number => {
+      const depts = getMemberDepartments(m);
+      for (let i = 0; i < allowedDepts.length; i++) {
+        if (depts.includes(allowedDepts[i])) {
+          return i;
+        }
       }
+      return -1;
+    };
 
-      // Sắp xếp theo năm sinh từ thấp xuống cao (ascending year, oldest first)
-      const yearA = parseInt(a.dob?.substring(0, 4)) || 9999;
-      const yearB = parseInt(b.dob?.substring(0, 4)) || 9999;
-      if (yearA !== yearB) {
-        return yearA - yearB;
-      }
+    const getPositionRank = (pos: string): number => {
+      const p = (pos || '').trim().toLowerCase();
+      if (p === 'giám đốc') return 100;
+      if (p === 'phó giám đốc') return 90;
+      if (p === 'tổ trưởng') return 80;
+      if (p === 'giảng viên') return 70;
+      if (p === 'nhân viên hỗ trợ') return 60;
+      if (p === 'nhân viên hành chính') return 50;
+      
+      if (p.includes('giám đốc')) return 100;
+      if (p.includes('phó')) return 90;
+      if (p.includes('quản lý')) return 85;
+      if (p.includes('tổ trưởng') || p.includes('trưởng nhóm')) return 80;
+      if (p.includes('giảng viên')) return 70;
+      if (p.includes('hỗ trợ')) return 60;
+      if (p.includes('hành chính')) return 50;
+      return 0;
+    };
 
-      return a.name.localeCompare(b.name, 'vi');
+    // Calculate dates of the active tracking week based on trackingBaseDate
+    const dateCopy = new Date(trackingBaseDate);
+    const dayOfWeek = dateCopy.getDay();
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    dateCopy.setDate(dateCopy.getDate() + diffToMonday);
+    
+    const weekStart = new Date(dateCopy);
+    const weekEnd = new Date(dateCopy);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    
+    const startStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+    const endStr = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, '0')}-${String(weekEnd.getDate()).padStart(2, '0')}`;
+    
+    // Check if there are any sessions in this week with "T.FOET"
+    const hasTfoetInWeek = sessions.some(session => {
+      const overlaps = session.startDate <= endStr && session.endDate >= startStr;
+      if (!overlaps) return false;
+      
+      const course = courses.find(c => c.id === session.courseId);
+      if (!course) return false;
+      
+      const isTfoetCourse = !!(
+        course.code?.toUpperCase().includes('T.FOET') || 
+        course.title?.toUpperCase().includes('T.FOET')
+      );
+      return isTfoetCourse;
     });
-  }, [members]);
+
+    // Check if currently-selected course in modal is T.FOET
+    const selectedCourseInModal = courses.find(c => c.id === selCourseId);
+    const isModalTfoet = !!(selectedCourseInModal && (
+      selectedCourseInModal.code?.toUpperCase().includes('T.FOET') ||
+      selectedCourseInModal.title?.toUpperCase().includes('T.FOET')
+    ));
+
+    const bypassDepartmentFilter = hasTfoetInWeek || isModalTfoet;
+
+    return members
+      .filter(m => {
+        const isCreator = m.id === 'mem-creator' || 
+                          m.email.toLowerCase() === 'setcadmin' || 
+                          m.email.toLowerCase() === 'setcadmin@safetycentre.org';
+        if (isCreator) return false;
+
+        if (bypassDepartmentFilter) return true;
+
+        // Do not display if they don't belong to any of the allowed departments
+        // This automatically excludes "Tổ Marketing" and "Bãi chữa cháy" unless they also have an allowed department
+        const primaryIdx = getPrimaryDeptIndex(m);
+        return primaryIdx !== -1;
+      })
+      .sort((a, b) => {
+        // Sort by primary department index first
+        const idxA = getPrimaryDeptIndex(a);
+        const idxB = getPrimaryDeptIndex(b);
+        if (idxA !== idxB) {
+          if (idxA === -1) return 1;
+          if (idxB === -1) return -1;
+          return idxA - idxB;
+        }
+
+        // Sort by position rank
+        const rankA = getPositionRank(a.position);
+        const rankB = getPositionRank(b.position);
+        if (rankA !== rankB) {
+          return rankB - rankA;
+        }
+
+        // Sort by DOB (oldest first, age descending)
+        const timeA = a.dob ? new Date(a.dob).getTime() : Infinity;
+        const timeB = b.dob ? new Date(b.dob).getTime() : Infinity;
+        if (timeA !== timeB) {
+          return timeA - timeB;
+        }
+
+        // Sort by name alphabetically in Vietnamese
+        return a.name.localeCompare(b.name, 'vi');
+      });
+  }, [members, sessions, courses, trackingBaseDate, selCourseId]);
 
   const trackingDays = useMemo(() => {
     const dateCopy = new Date(trackingBaseDate);
@@ -219,8 +447,90 @@ export default function TimelineView({
       const isDateInSessionRange = dateStr >= session.startDate && dateStr <= session.endDate;
       if (!isDateInSessionRange) return;
 
+      const isTFoetCourse = !!(
+        course.code?.toUpperCase().includes('T.FOET') || 
+        course.title?.toUpperCase().includes('T.FOET')
+      );
+
+      const lowerMemberName = member.name.trim().toLowerCase();
+
+      if (isTFoetCourse && session.subModules) {
+        // T.FOET submodules custom periods logic
+        // "Các học phần đều được tính là 2 tiết, học phần FA được tính là 1 tiết"
+        Object.keys(session.subModules).forEach(subModuleName => {
+          const val = session.subModules?.[subModuleName];
+          if (val && typeof val === 'object' && val.date === dateStr) {
+            const subModuleSessionType = val.sessionType || '';
+            const subModuleStartTime = val.startTime || '08:00';
+            const subModuleEndTime = val.endTime || '16:30';
+            const overlapsMorning = subModuleStartTime < '12:00';
+            const overlapsAfternoon = subModuleEndTime > '12:00' || subModuleStartTime >= '12:00';
+
+            let isMorningGv = false;
+            let isAfternoonGv = false;
+
+            const subModuleMorningInstructors: string[] = val.morningInstructors || [];
+            const subModuleAfternoonInstructors: string[] = val.afternoonInstructors || [];
+            const subModuleInstructor: string | null = val.instructor || null;
+
+            if (overlapsMorning) {
+              if (subModuleMorningInstructors.length > 0) {
+                const morningInsts = subModuleMorningInstructors.map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+                if (morningInsts.includes(lowerMemberName)) {
+                  isMorningGv = true;
+                }
+              } else if (subModuleInstructor) {
+                const insts = subModuleInstructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+                if (insts.includes(lowerMemberName)) {
+                  isMorningGv = true;
+                }
+              }
+            }
+
+            if (overlapsAfternoon) {
+              if (subModuleAfternoonInstructors.length > 0) {
+                const afternoonInsts = subModuleAfternoonInstructors.map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+                if (afternoonInsts.includes(lowerMemberName)) {
+                  isAfternoonGv = true;
+                }
+              } else if (subModuleInstructor) {
+                const insts = subModuleInstructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+                if (insts.includes(lowerMemberName)) {
+                  isAfternoonGv = true;
+                }
+              }
+            }
+
+            const submodulePeriod = subModuleName.toUpperCase() === 'FA' ? 1 : 2;
+
+            if (subModuleSessionType === 'Sáng') {
+              if (isMorningGv) {
+                totalMorningPeriods += submodulePeriod;
+              }
+            } else if (subModuleSessionType === 'Chiều') {
+              if (isAfternoonGv) {
+                totalAfternoonPeriods += submodulePeriod;
+              }
+            } else {
+              // Cả ngày or default
+              if (isMorningGv && isAfternoonGv) {
+                totalMorningPeriods += submodulePeriod / 2;
+                totalAfternoonPeriods += submodulePeriod / 2;
+              } else if (isMorningGv) {
+                totalMorningPeriods += submodulePeriod;
+              } else if (isAfternoonGv) {
+                totalAfternoonPeriods += submodulePeriod;
+              }
+            }
+          }
+        });
+        return; // Skip normal session handling
+      }
+
       let subModuleFound = false;
       let subModuleInstructor: string | null = null;
+      let subModuleMorningInstructors: string[] = [];
+      let subModuleAfternoonInstructors: string[] = [];
       let subModuleStartTime = session.startTime;
       let subModuleEndTime = session.endTime;
 
@@ -231,6 +541,8 @@ export default function TimelineView({
             if (val.date === dateStr) {
               subModuleFound = true;
               subModuleInstructor = val.instructor;
+              subModuleMorningInstructors = val.morningInstructors || [];
+              subModuleAfternoonInstructors = val.afternoonInstructors || [];
               if (val.startTime) subModuleStartTime = val.startTime;
               if (val.endTime) subModuleEndTime = val.endTime;
             }
@@ -238,62 +550,107 @@ export default function TimelineView({
         });
       }
 
-      let isGv = false;
+      const overlapsMorning = subModuleStartTime < '12:00';
+      const overlapsAfternoon = subModuleEndTime > '12:00' || subModuleStartTime >= '12:00';
+
+      let isMorningGv = false;
+      let isAfternoonGv = false;
+
       if (subModuleFound) {
-        if (subModuleInstructor && subModuleInstructor.trim().toLowerCase() === member.name.trim().toLowerCase()) {
-          isGv = true;
+        // Morning check
+        if (overlapsMorning) {
+          if (subModuleMorningInstructors.length > 0) {
+            const morningInsts = subModuleMorningInstructors.map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+            if (morningInsts.includes(lowerMemberName)) {
+              isMorningGv = true;
+            }
+          } else if (subModuleInstructor) {
+            const insts = subModuleInstructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+            if (insts.includes(lowerMemberName)) {
+              isMorningGv = true;
+            }
+          }
+        }
+        // Afternoon check
+        if (overlapsAfternoon) {
+          if (subModuleAfternoonInstructors.length > 0) {
+            const afternoonInsts = subModuleAfternoonInstructors.map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+            if (afternoonInsts.includes(lowerMemberName)) {
+              isAfternoonGv = true;
+            }
+          } else if (subModuleInstructor) {
+            const insts = subModuleInstructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+            if (insts.includes(lowerMemberName)) {
+              isAfternoonGv = true;
+            }
+          }
         }
       } else {
-        if (session.instructor && session.instructor.trim().toLowerCase() === member.name.trim().toLowerCase()) {
-          isGv = true;
+        if (session.instructor) {
+          const insts = session.instructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+          if (insts.includes(lowerMemberName)) {
+            if (overlapsMorning) isMorningGv = true;
+            if (overlapsAfternoon) isAfternoonGv = true;
+          }
         }
       }
 
-      if (!isGv) return;
+      if (!isMorningGv && !isAfternoonGv) return;
 
       const totalPeriods = course.periods !== undefined ? course.periods : 8;
       const duration = course.durationDays || 1;
       const dailyPeriods = totalPeriods / duration;
 
-      const overlapsMorning = subModuleStartTime < '12:00';
-      const overlapsAfternoon = subModuleEndTime > '12:00' || subModuleStartTime >= '12:00';
-
-      if (overlapsMorning && overlapsAfternoon) {
+      if (isMorningGv && isAfternoonGv) {
         totalMorningPeriods += dailyPeriods / 2;
         totalAfternoonPeriods += dailyPeriods / 2;
-      } else if (overlapsMorning) {
+      } else if (isMorningGv) {
         totalMorningPeriods += dailyPeriods;
-      } else if (overlapsAfternoon) {
+      } else if (isAfternoonGv) {
         totalAfternoonPeriods += dailyPeriods;
       }
     });
 
-    const cappedMorning = Math.min(4, totalMorningPeriods);
-    const cappedAfternoon = Math.min(4, totalAfternoonPeriods);
+    let roundedMorning = 0;
+    if (totalMorningPeriods > 0) {
+      roundedMorning = Math.max(1, Math.round(totalMorningPeriods));
+    }
+    let roundedAfternoon = 0;
+    if (totalAfternoonPeriods > 0) {
+      roundedAfternoon = Math.max(1, Math.round(totalAfternoonPeriods));
+    }
+
+    const cappedMorning = Math.min(4, roundedMorning);
+    const cappedAfternoon = Math.min(4, roundedAfternoon);
     return Math.min(8, cappedMorning + cappedAfternoon);
   };
 
   const calculateWeeklyStats = (member: Member) => {
     let tgCount = 0;
     let taCount = 0;
+    let ttCount = 0;
 
     trackingDays.forEach(date => {
       const dateStr = getLocalDateString(date);
       const morningAssignments = findAssignments(member, dateStr, 'Sáng');
       const afternoonAssignments = findAssignments(member, dateStr, 'Chiều');
+      const dayPeriods = calculateTeachingPeriods(member, dateStr);
+      ttCount += dayPeriods;
 
       morningAssignments.forEach(assign => {
-        if (assign.toLowerCase().endsWith(', tg')) {
+        const lowerAssign = assign.toLowerCase();
+        if (lowerAssign.endsWith(', tg') || lowerAssign.endsWith(', (tg)')) {
           tgCount += 1;
-        } else if (assign.toLowerCase().endsWith(', ta')) {
+        } else if (lowerAssign.endsWith(', ta') || lowerAssign.endsWith(', (ta)')) {
           taCount += 1;
         }
       });
 
       afternoonAssignments.forEach(assign => {
-        if (assign.toLowerCase().endsWith(', tg')) {
+        const lowerAssign = assign.toLowerCase();
+        if (lowerAssign.endsWith(', tg') || lowerAssign.endsWith(', (tg)')) {
           tgCount += 1;
-        } else if (assign.toLowerCase().endsWith(', ta')) {
+        } else if (lowerAssign.endsWith(', ta') || lowerAssign.endsWith(', (ta)')) {
           taCount += 1;
         }
       });
@@ -301,7 +658,8 @@ export default function TimelineView({
 
     return {
       tgTotal: tgCount,
-      taTotal: taCount * 2
+      taTotal: taCount * 2,
+      ttTotal: ttCount
     };
   };
 
@@ -315,11 +673,171 @@ export default function TimelineView({
       const isDateInSessionRange = dateStr >= session.startDate && dateStr <= session.endDate;
       if (!isDateInSessionRange) return;
 
+      // Check overall session level sessionType
+      const sessionType = session.sessionType || '';
+      if (sessionType === 'Sáng' && halfDay === 'Chiều') return;
+      if (sessionType === 'Chiều' && halfDay === 'Sáng') return;
+
+      const isTFoetCourse = !!(course && (
+        course.code?.toUpperCase().includes('T.FOET') || 
+        course.title?.toUpperCase().includes('T.FOET')
+      ));
+
+      const lowerMemberName = member.name.trim().toLowerCase();
+
+      if (isTFoetCourse) {
+        const assignedGvSubModules: string[] = [];
+        let isTa = false;
+        let isTg = false;
+
+        if (session.subModules) {
+          Object.keys(session.subModules).forEach(subModuleName => {
+            const val = session.subModules?.[subModuleName];
+            if (val && typeof val === 'object' && val.date === dateStr) {
+              const subModuleSessionType = val.sessionType || '';
+              if (subModuleSessionType === 'Sáng' && halfDay === 'Chiều') return;
+              if (subModuleSessionType === 'Chiều' && halfDay === 'Sáng') return;
+
+              const subModuleStartTime = val.startTime || session.startTime;
+              const subModuleEndTime = val.endTime || session.endTime;
+              const overlapsMorning = subModuleStartTime < '12:00';
+              const overlapsAfternoon = subModuleEndTime > '12:00' || subModuleStartTime >= '12:00';
+
+              if (halfDay === 'Sáng' && !overlapsMorning) return;
+              if (halfDay === 'Chiều' && !overlapsAfternoon) return;
+
+              // 1. GV check
+              let isGv = false;
+              const subModuleMorningInstructors: string[] = val.morningInstructors || [];
+              const subModuleAfternoonInstructors: string[] = val.afternoonInstructors || [];
+              const subModuleInstructor: string | null = val.instructor || null;
+
+              if (halfDay === 'Sáng' && subModuleMorningInstructors.length > 0) {
+                const morningInsts = subModuleMorningInstructors.map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+                if (morningInsts.includes(lowerMemberName)) {
+                  isGv = true;
+                }
+              } else if (halfDay === 'Chiều' && subModuleAfternoonInstructors.length > 0) {
+                const afternoonInsts = subModuleAfternoonInstructors.map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+                if (afternoonInsts.includes(lowerMemberName)) {
+                  isGv = true;
+                }
+              } else if (subModuleInstructor) {
+                const insts = subModuleInstructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+                if (insts.includes(lowerMemberName)) {
+                  isGv = true;
+                }
+              }
+
+              if (isGv) {
+                assignedGvSubModules.push(subModuleName);
+              }
+
+              // 2. TA check
+              let resolvedTas: string[] = [];
+              const subModuleMorningTas: string[] = (val as any).morningTaOfficers || [];
+              const subModuleAfternoonTas: string[] = (val as any).afternoonTaOfficers || [];
+              const subModuleTaStr = val.taOfficer || null;
+              const subModuleTasArr = val.taOfficers || [];
+
+              const hasSplitTas = subModuleMorningTas.length > 0 || subModuleAfternoonTas.length > 0;
+              if (hasSplitTas) {
+                if (halfDay === 'Sáng') {
+                  resolvedTas = subModuleMorningTas.map(t => t.trim().toLowerCase()).filter(Boolean);
+                } else {
+                  resolvedTas = subModuleAfternoonTas.map(t => t.trim().toLowerCase()).filter(Boolean);
+                }
+              } else {
+                if (subModuleTaStr) {
+                  resolvedTas = subModuleTaStr.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+                } else if (subModuleTasArr.length > 0) {
+                  resolvedTas = subModuleTasArr.map(t => t.trim().toLowerCase()).filter(Boolean);
+                }
+              }
+              if (resolvedTas.includes(lowerMemberName)) {
+                isTa = true;
+              }
+
+              // 3. TG check
+              let resolvedTgs: string[] = [];
+              const subModuleMorningTgs: string[] = (val as any).morningTgOfficers || [];
+              const subModuleAfternoonTgs: string[] = (val as any).afternoonTgOfficers || [];
+              const subModuleTgStr = val.tgOfficer || null;
+              const subModuleTgsArr = val.tgOfficers || [];
+
+              const hasSplitTgs = subModuleMorningTgs.length > 0 || subModuleAfternoonTgs.length > 0;
+              if (hasSplitTgs) {
+                if (halfDay === 'Sáng') {
+                  resolvedTgs = subModuleMorningTgs.map(t => t.trim().toLowerCase()).filter(Boolean);
+                } else {
+                  resolvedTgs = subModuleAfternoonTgs.map(t => t.trim().toLowerCase()).filter(Boolean);
+                }
+              } else {
+                if (subModuleTgStr) {
+                  resolvedTgs = subModuleTgStr.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+                } else if (subModuleTgsArr.length > 0) {
+                  resolvedTgs = subModuleTgsArr.map(t => t.trim().toLowerCase()).filter(Boolean);
+                }
+              }
+              if (resolvedTgs.includes(lowerMemberName)) {
+                isTg = true;
+              }
+            }
+          });
+        } else {
+          // Fallback to session level if there are no subModules
+          if (session.instructor) {
+            const insts = session.instructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+            if (insts.includes(lowerMemberName)) {
+              assignedGvSubModules.push('T.FOET');
+            }
+          }
+          if (session.taOfficer) {
+            const tas = session.taOfficer.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+            if (tas.includes(lowerMemberName)) {
+              isTa = true;
+            }
+          }
+          if (session.tgOfficer) {
+            const tgs = session.tgOfficer.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+            if (tgs.includes(lowerMemberName)) {
+              isTg = true;
+            }
+          }
+        }
+
+        const sCode = session.sessionCode ? session.sessionCode.trim() : '';
+        const baseName = sCode && sCode !== 'N/A' ? `${sCode} ${courseCode}` : courseCode;
+
+        if (assignedGvSubModules.length > 0) {
+          const assignedModulesStr = assignedGvSubModules.join(', ');
+          assignments.push(`${baseName}, ${assignedModulesStr}, GV`);
+        }
+        if (isTa) {
+          assignments.push(`${baseName}, TA`);
+        }
+        if (isTg) {
+          assignments.push(`${baseName}, TG`);
+        }
+
+        return; // Proceed to next session
+      }
+
       let subModuleFound = false;
       let subModuleInstructor: string | null = null;
+      let subModuleMorningInstructors: string[] = [];
+      let subModuleAfternoonInstructors: string[] = [];
+      let subModuleTaStr: string | null = null;
+      let subModuleTgStr: string | null = null;
       let subModuleTas: string[] = [];
+      let subModuleTgs: string[] = [];
+      let subModuleMorningTgs: string[] = [];
+      let subModuleAfternoonTgs: string[] = [];
+      let subModuleMorningTas: string[] = [];
+      let subModuleAfternoonTas: string[] = [];
       let subModuleStartTime = session.startTime;
       let subModuleEndTime = session.endTime;
+      let subModuleSessionType = '';
 
       if (session.subModules) {
         Object.keys(session.subModules).forEach(key => {
@@ -328,12 +846,33 @@ export default function TimelineView({
             if (val.date === dateStr) {
               subModuleFound = true;
               subModuleInstructor = val.instructor;
+              subModuleMorningInstructors = val.morningInstructors || [];
+              subModuleAfternoonInstructors = val.afternoonInstructors || [];
+              subModuleTaStr = val.taOfficer || null;
+              subModuleTgStr = val.tgOfficer || null;
               subModuleTas = val.taOfficers || [];
+              subModuleTgs = val.tgOfficers || [];
+              subModuleMorningTgs = (val as any).morningTgOfficers || [];
+              subModuleAfternoonTgs = (val as any).afternoonTgOfficers || [];
+              subModuleMorningTas = (val as any).morningTaOfficers || [];
+              subModuleAfternoonTas = (val as any).afternoonTaOfficers || [];
               if (val.startTime) subModuleStartTime = val.startTime;
               if (val.endTime) subModuleEndTime = val.endTime;
+              if (val.sessionType) subModuleSessionType = val.sessionType;
             }
           }
         });
+      }
+
+      // If subModules exist but none found for this day, then no class is scheduled on this day
+      if (session.subModules && Object.keys(session.subModules).length > 0 && !subModuleFound) {
+        return;
+      }
+
+      // Check subModule sessionType overrides
+      if (subModuleFound && subModuleSessionType) {
+        if (subModuleSessionType === 'Sáng' && halfDay === 'Chiều') return;
+        if (subModuleSessionType === 'Chiều' && halfDay === 'Sáng') return;
       }
 
       const overlapsMorning = subModuleStartTime < '12:00';
@@ -345,28 +884,82 @@ export default function TimelineView({
       let roles: string[] = [];
 
       if (subModuleFound) {
-        if (subModuleInstructor && subModuleInstructor.trim().toLowerCase() === member.name.trim().toLowerCase()) {
-          roles.push('GV');
+        // GV
+        if (halfDay === 'Sáng' && subModuleMorningInstructors.length > 0) {
+          const morningInsts = subModuleMorningInstructors.map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+          if (morningInsts.includes(lowerMemberName)) {
+            roles.push('GV');
+          }
+        } else if (halfDay === 'Chiều' && subModuleAfternoonInstructors.length > 0) {
+          const afternoonInsts = subModuleAfternoonInstructors.map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+          if (afternoonInsts.includes(lowerMemberName)) {
+            roles.push('GV');
+          }
+        } else if (subModuleInstructor) {
+          const insts = subModuleInstructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+          if (insts.includes(lowerMemberName)) {
+            roles.push('GV');
+          }
         }
-        const isTa = subModuleTas.some(t => t.trim().toLowerCase() === member.name.trim().toLowerCase());
-        if (isTa) {
+        
+        // TA (Phụ giảng)
+        let resolvedTas: string[] = [];
+        const hasSplitTas = subModuleMorningTas.length > 0 || subModuleAfternoonTas.length > 0;
+        if (hasSplitTas) {
+          if (halfDay === 'Sáng') {
+            resolvedTas = subModuleMorningTas.map(t => t.trim().toLowerCase()).filter(Boolean);
+          } else {
+            resolvedTas = subModuleAfternoonTas.map(t => t.trim().toLowerCase()).filter(Boolean);
+          }
+        } else {
+          if (subModuleTaStr) {
+            resolvedTas = subModuleTaStr.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+          } else if (subModuleTas.length > 0) {
+            resolvedTas = subModuleTas.map(t => t.trim().toLowerCase()).filter(Boolean);
+          }
+        }
+        if (resolvedTas.includes(lowerMemberName)) {
           roles.push('TA');
         }
+
+        // TG (Trợ giảng)
+        let resolvedTgs: string[] = [];
+        const hasSplitTgs = subModuleMorningTgs.length > 0 || subModuleAfternoonTgs.length > 0;
+        if (hasSplitTgs) {
+          if (halfDay === 'Sáng') {
+            resolvedTgs = subModuleMorningTgs.map(t => t.trim().toLowerCase()).filter(Boolean);
+          } else {
+            resolvedTgs = subModuleAfternoonTgs.map(t => t.trim().toLowerCase()).filter(Boolean);
+          }
+        } else {
+          if (subModuleTgStr) {
+            resolvedTgs = subModuleTgStr.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+          } else if (subModuleTgs.length > 0) {
+            resolvedTgs = subModuleTgs.map(t => t.trim().toLowerCase()).filter(Boolean);
+          }
+        }
+        if (resolvedTgs.includes(lowerMemberName)) {
+          roles.push('TG');
+        }
       } else {
-        if (session.instructor && session.instructor.trim().toLowerCase() === member.name.trim().toLowerCase()) {
-          roles.push('GV');
+        // Fallback to session level only if there are no subModules
+        if (session.instructor) {
+          const insts = session.instructor.split(/[,;]+/).map(i => i.split(' (')[0].trim().toLowerCase()).filter(Boolean);
+          if (insts.includes(lowerMemberName)) {
+            roles.push('GV');
+          }
         }
         
         if (session.taOfficer) {
-          const tas = session.taOfficer.split(/[,;]+/).map(t => t.trim().toLowerCase());
-          if (tas.includes(member.name.trim().toLowerCase())) {
+          const tas = session.taOfficer.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+          if (tas.includes(lowerMemberName)) {
             roles.push('TA');
           }
         }
 
         if (session.tgOfficer) {
-          const tgs = session.tgOfficer.split(/[,;]+/).map(t => t.trim().toLowerCase());
-          if (tgs.includes(member.name.trim().toLowerCase())) {
+          const tgs = session.tgOfficer.split(/[,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+          if (tgs.includes(lowerMemberName)) {
             roles.push('TG');
           }
         }
@@ -374,7 +967,12 @@ export default function TimelineView({
 
       if (roles.length > 0) {
         roles.forEach(role => {
-          assignments.push(`${courseCode}, ${role}`);
+          const sCode = session.sessionCode ? session.sessionCode.trim() : '';
+          if (sCode && sCode !== 'N/A') {
+            assignments.push(`${sCode} ${courseCode}, ${role}`);
+          } else {
+            assignments.push(`${courseCode}, ${role}`);
+          }
         });
       }
     });
@@ -422,6 +1020,10 @@ export default function TimelineView({
      popupCourseSession.course.code?.toUpperCase().includes('T.BOSIET')) && 
     popupCourseSession.course.domain === 'OPITO/GWO');
 
+  const isSessionTFoet = !!(popupCourseSession && 
+    (popupCourseSession.course.code?.toUpperCase().includes('T.FOET') || 
+     popupCourseSession.course.title?.toUpperCase().includes('T.FOET')));
+
   const isSessionHseMultiDay = !!(popupCourseSession && 
     popupCourseSession.course.domain === 'HSE' && 
     popupCourseSession.course.durationDays && 
@@ -429,94 +1031,117 @@ export default function TimelineView({
 
   const handleStartEditingSession = () => {
     if (!popupCourseSession) return;
-    const { session } = popupCourseSession;
-    setIsEditingSession(true);
-    setEditStartDate(session.startDate);
-    setEditEndDate(session.endDate);
-    setEditStartTime(session.startTime);
-    setEditEndTime(session.endTime);
-    setEditInstructor(session.instructor);
-    setEditClassroom(session.classroom);
-    setEditMaxCapacity(session.maxCapacity);
-    setEditTaOfficer(session.taOfficer || '');
-    setEditTgOfficer(session.tgOfficer || '');
-    setEditMethod(session.method || 'Offline');
-    
-    const isSessionHse = popupCourseSession.course.domain === 'HSE' && popupCourseSession.course.durationDays && popupCourseSession.course.durationDays > 1;
+    const { session, course } = popupCourseSession;
 
-    const defaultSubs: Record<string, {
-      instructor: string;
-      date: string;
-      startTime: string;
-      endTime: string;
-      classroom: string;
-      taOfficers?: string[];
-      theoryClassroom?: string;
-      practiceArea?: string;
-    }> = {};
+    setEditingSessionId(session.id);
+    setSelCourseId(session.courseId);
+    setAssignSessionCode(session.sessionCode || '');
+    setAssignCourseCode(course.code || '');
+    setAssignCourseName(course.title || '');
+    setAssignStartDate(session.startDate);
+    setAssignEndDate(session.endDate);
+    setAssignMethod(session.method || 'Offline');
+    setAssignInstructor(session.instructor);
+    setAssignClassroom(session.classroom || '');
+    setAssignCapacity(session.maxCapacity);
+    setAssignNote(session.notes || '');
+    setAssignTa(session.taOfficer || '');
+    setAssignTg(session.tgOfficer || '');
+    setAssignDomain(session.domain || 'HSE');
+    setAssignStudentsCount(session.enrolledIds ? session.enrolledIds.length : 0);
 
-    if (isSessionHse) {
-      const daysCount = popupCourseSession.course.durationDays || 1;
-      for (let i = 1; i <= daysCount; i++) {
-        const key = `Day ${i}`;
-        const val = session.subModules?.[key];
-        if (val && typeof val === 'object') {
-          defaultSubs[key] = {
-            instructor: val.instructor || session.instructor || "",
-            date: val.date || calculateEndDate(session.startDate, i),
-            startTime: val.startTime || session.startTime || "08:00",
-            endTime: val.endTime || session.endTime || "16:30",
-            classroom: val.classroom || session.classroom || "",
-            theoryClassroom: val.theoryClassroom || val.classroom || session.classroom || "",
-            practiceArea: val.practiceArea || ""
-          };
-        } else {
-          defaultSubs[key] = {
-            instructor: session.instructor || "",
-            date: calculateEndDate(session.startDate, i),
-            startTime: session.startTime || "08:00",
-            endTime: session.endTime || "16:30",
-            classroom: session.classroom || "",
-            theoryClassroom: session.classroom || "",
-            practiceArea: ""
-          };
-        }
-      }
-    } else {
-      const standardKeys = ["OSI", "HE", "SS", "FF", "FA", "HE (P)", "FF.SR (P)", "SS (P)"];
-      standardKeys.forEach(k => {
-        defaultSubs[k] = { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "", taOfficers: [] };
+    const newDays: CustomStudyDay[] = [];
+    const duration = course.durationDays || 1;
+    const isTFoetCourse = !!(course && 
+      (course.code?.toUpperCase().includes('T.FOET') || 
+       course.title?.toUpperCase().includes('T.FOET')));
+
+    if (isTFoetCourse) {
+      const tFoetModules = ["HUET", "SS", "FA", "FF.SR"];
+      tFoetModules.forEach((mod, index) => {
+        const val = session.subModules?.[mod];
+        const insts = val?.instructor ? val.instructor.split(/[,;]+/).map((i: string) => i.trim()).filter(Boolean) : [];
+        const tas = val?.taOfficer ? val.taOfficer.split(/[,;]+/).map((t: string) => t.trim()).filter(Boolean) : (val?.taOfficers || []);
+        const mornTas = val?.morningTaOfficers || (tas.length > 0 ? [...tas] : []);
+        const aftTas = val?.afternoonTaOfficers || (tas.length > 0 ? [...tas] : []);
+        
+        newDays.push({
+          id: `tfoet-edit-${mod}-${Date.now()}-${Math.random()}`,
+          date: val?.date || calculateEndDate(session.startDate, index + 1),
+          instructors: insts,
+          morningInstructors: insts,
+          afternoonInstructors: insts,
+          taOfficers: tas,
+          morningTaOfficers: mornTas,
+          afternoonTaOfficers: aftTas,
+          tgOfficers: [],
+          morningTgOfficers: [],
+          afternoonTgOfficers: [],
+          startTime: val?.startTime || '08:00',
+          endTime: val?.endTime || '16:30',
+          classroom: val?.classroom || session.classroom || '',
+          moduleName: mod,
+          sessionType: val?.sessionType || ((val?.startTime === '08:00' && val?.endTime === '12:00') ? 'Sáng' : (val?.startTime === '13:00' && val?.endTime === '16:30') ? 'Chiều' : 'Cả ngày')
+        });
       });
-
-      if (session.subModules) {
-        Object.keys(defaultSubs).forEach(key => {
-          const val = session.subModules?.[key];
-          if (val) {
-            if (typeof val === 'object') {
-              defaultSubs[key] = {
-                instructor: val.instructor || "",
-                date: val.date || "",
-                startTime: val.startTime || "08:00",
-                endTime: val.endTime || "16:30",
-                classroom: val.classroom || "",
-                taOfficers: (val as any).taOfficers || []
-              };
-            } else if (typeof val === 'string') {
-              defaultSubs[key] = {
-                instructor: val,
-                date: "",
-                startTime: "08:00",
-                endTime: "16:30",
-                classroom: "",
-                taOfficers: []
-              };
-            }
-          }
+    } else if (session.subModules && Object.keys(session.subModules).length > 0) {
+      const keys = Object.keys(session.subModules).sort((a, b) => {
+        const numA = parseInt(a.replace('Day ', '')) || 0;
+        const numB = parseInt(b.replace('Day ', '')) || 0;
+        return numA - numB;
+      });
+      keys.forEach((key, index) => {
+        const val = session.subModules?.[key];
+        if (val) {
+          const insts = val.instructor ? val.instructor.split(/[,;]+/).map(i => i.trim()).filter(Boolean) : [];
+          const tas = val.taOfficer ? val.taOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean) : (val.taOfficers || []);
+          const mornTas = val.morningTaOfficers || (tas.length > 0 ? [...tas] : []);
+          const aftTas = val.afternoonTaOfficers || (tas.length > 0 ? [...tas] : []);
+          const tgs = val.tgOfficer ? val.tgOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean) : (val.tgOfficers || []);
+          newDays.push({
+            id: `day-edit-${index}-${Date.now()}-${Math.random()}`,
+            date: val.date || calculateEndDate(session.startDate, index + 1),
+            instructors: insts,
+            morningInstructors: val.morningInstructors || (insts.length > 0 ? [...insts] : []),
+            afternoonInstructors: val.afternoonInstructors || (insts.length > 0 ? [...insts] : []),
+            taOfficers: tas,
+            morningTaOfficers: mornTas,
+            afternoonTaOfficers: aftTas,
+            tgOfficers: tgs,
+            morningTgOfficers: (val as any).morningTgOfficers || (tgs.length > 0 ? [...tgs] : []),
+            afternoonTgOfficers: (val as any).afternoonTgOfficers || (tgs.length > 0 ? [...tgs] : []),
+            startTime: val.startTime || session.startTime || '08:00',
+            endTime: val.endTime || session.endTime || '16:30',
+            classroom: val.classroom || session.classroom || '',
+          });
+        }
+      });
+    } else {
+      for (let i = 1; i <= duration; i++) {
+        const insts = session.instructor ? session.instructor.split(/[,;]+/).map(i => i.trim()).filter(Boolean) : [];
+        const tas = session.taOfficer ? session.taOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean) : [];
+        newDays.push({
+          id: `day-edit-${i}-${Date.now()}-${Math.random()}`,
+          date: calculateEndDate(session.startDate, i),
+          instructors: insts,
+          morningInstructors: [...insts],
+          afternoonInstructors: [...insts],
+          taOfficers: tas,
+          morningTaOfficers: [...tas],
+          afternoonTaOfficers: [...tas],
+          tgOfficers: session.tgOfficer ? session.tgOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean) : [],
+          morningTgOfficers: session.tgOfficer ? session.tgOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean) : [],
+          afternoonTgOfficers: session.tgOfficer ? session.tgOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean) : [],
+          startTime: session.startTime || '08:00',
+          endTime: session.endTime || '16:30',
+          classroom: session.classroom || '',
         });
       }
     }
-    
-    setEditSubModules(defaultSubs);
+    setCustomStudyDays(newDays);
+
+    setIsAssignmentModalOpen(true);
+    setPopupCourseSession(null);
   };
 
   const handleSaveSessionUpdates = () => {
@@ -529,11 +1154,17 @@ export default function TimelineView({
       endTime: editEndTime,
       instructor: isSessionOpitoBosiet 
         ? Object.values(editSubModules).map((v: any) => v.instructor).filter(Boolean).join(', ') || 'Đội ngũ Giảng viên'
-        : editInstructor,
+        : (isSessionHseMultiDay
+            ? Array.from(new Set(Object.values(editSubModules).map((v: any) => v.instructor).filter(Boolean))).join(', ') || editInstructor
+            : editInstructor),
       classroom: editClassroom,
-      maxCapacity: editMaxCapacity,
-      taOfficer: editTaOfficer,
-      tgOfficer: editTgOfficer,
+      maxCapacity: isNaN(editMaxCapacity) ? 20 : editMaxCapacity,
+      taOfficer: isSessionHseMultiDay
+        ? Array.from(new Set(Object.values(editSubModules).map((v: any) => v.taOfficer).filter(Boolean))).join(', ') || editTaOfficer
+        : editTaOfficer,
+      tgOfficer: isSessionHseMultiDay
+        ? Array.from(new Set(Object.values(editSubModules).map((v: any) => v.tgOfficer).filter(Boolean))).join(', ') || editTgOfficer
+        : editTgOfficer,
       method: isSessionOpitoBosiet ? 'Offline' : editMethod,
       subModules: (isSessionOpitoBosiet || isSessionHseMultiDay) ? editSubModules : popupCourseSession.session.subModules,
     };
@@ -568,7 +1199,8 @@ export default function TimelineView({
   };
 
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState<boolean>(false);
-  const [selCourseId, setSelCourseId] = useState<string>(courses[0]?.id || '');
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [assignSessionCode, setAssignSessionCode] = useState<string>('');
   const [assignCourseCode, setAssignCourseCode] = useState<string>(courses[0]?.code || '');
   const [assignCourseName, setAssignCourseName] = useState<string>(courses[0]?.title || '');
   const [assignStartDate, setAssignStartDate] = useState<string>(getTodayString());
@@ -576,17 +1208,8 @@ export default function TimelineView({
   const [assignTa, setAssignTa] = useState<string>('');
   const [assignTg, setAssignTg] = useState<string>('');
   const [assignMethod, setAssignMethod] = useState<'Online' | 'Offline'>('Offline');
-  const [assignInstructor, setAssignInstructor] = useState<string>(() => {
-    const foundInst = members?.find(m => m.position?.toLowerCase().includes('instructor') || m.position?.toLowerCase().includes('giảng viên'));
-    if (foundInst) {
-      return foundInst.name;
-    }
-    const defaultInst = members?.[1] || members?.[0];
-    if (defaultInst) {
-      return defaultInst.name;
-    }
-    return '';
-  });
+  const [assignStudentsCount, setAssignStudentsCount] = useState<number>(0);
+  const [assignInstructor, setAssignInstructor] = useState<string>('');
   const [assignClassroom, setAssignClassroom] = useState<string>('');
   
   // Keep first classroom selected if state changes
@@ -604,6 +1227,181 @@ export default function TimelineView({
     const firstCourse = courses[0];
     return (firstCourse?.domain as CourseDomain) || 'HSE';
   });
+
+  // Custom Study Days dynamic states & handlers
+  interface CustomStudyDay {
+    id: string;
+    date: string;
+    instructors: string[];
+    morningInstructors?: string[];
+    afternoonInstructors?: string[];
+    taOfficers: string[];
+    morningTaOfficers?: string[];
+    afternoonTaOfficers?: string[];
+    tgOfficers: string[];
+    morningTgOfficers?: string[];
+    afternoonTgOfficers?: string[];
+    startTime: string;
+    endTime: string;
+    classroom: string;
+    moduleName?: string;
+    sessionType?: 'Sáng' | 'Chiều' | 'Cả ngày';
+  }
+
+  const [customStudyDays, setCustomStudyDays] = useState<CustomStudyDay[]>([
+    {
+      id: 'day-initial',
+      date: getTodayString(),
+      instructors: [''],
+      morningInstructors: [''],
+      afternoonInstructors: [''],
+      taOfficers: [],
+      tgOfficers: [],
+      morningTgOfficers: [],
+      afternoonTgOfficers: [],
+      startTime: '08:00',
+      endTime: '16:30',
+      classroom: ''
+    }
+  ]);
+
+  const [prevSelCourseId, setPrevSelCourseId] = useState<string>('');
+  const [prevAssignStartDate, setPrevAssignStartDate] = useState<string>('');
+
+  const handleAddStudyDay = () => {
+    let lastDate = getTodayString();
+    if (customStudyDays.length > 0) {
+      const lastDay = customStudyDays[customStudyDays.length - 1];
+      lastDate = calculateEndDate(lastDay.date, 2); // next day
+    }
+
+    const defaultRoom = activeClassrooms?.[0]?.name || '';
+
+    const newDay: CustomStudyDay = {
+      id: `day-added-${Date.now()}-${Math.random()}`,
+      date: lastDate,
+      instructors: [''],
+      morningInstructors: [''],
+      afternoonInstructors: [''],
+      taOfficers: [],
+      tgOfficers: [],
+      morningTgOfficers: [],
+      afternoonTgOfficers: [],
+      startTime: '08:00',
+      endTime: '16:30',
+      classroom: defaultRoom
+    };
+    setCustomStudyDays([...customStudyDays, newDay]);
+  };
+
+  const handleRemoveStudyDay = (id: string) => {
+    if (customStudyDays.length <= 1) return;
+    setCustomStudyDays(customStudyDays.filter(d => d.id !== id));
+  };
+
+  const handleUpdateStudyDay = (id: string, updates: Partial<CustomStudyDay>) => {
+    setCustomStudyDays(prevDays => {
+      const index = prevDays.findIndex(d => d.id === id);
+      if (index === -1) return prevDays;
+
+      const selected = courses.find(c => c.id === selCourseId);
+      const isTFoetCourse = !!(selected && 
+        (selected.code?.toUpperCase().includes('T.FOET') || 
+         selected.title?.toUpperCase().includes('T.FOET')));
+
+      // If it's a T.FOET course, changing the date of the first module (index === 0)
+      // should update all other modules' dates to the same date.
+      if (isTFoetCourse && index === 0 && updates.date !== undefined) {
+        const targetDate = updates.date;
+        return prevDays.map(d => ({
+          ...d,
+          ...(d.id === id ? updates : { date: targetDate })
+        }));
+      }
+
+      return prevDays.map(d => {
+        if (d.id === id) {
+          const next = { ...d, ...updates };
+          if (updates.morningTgOfficers || updates.afternoonTgOfficers) {
+            const m = next.morningTgOfficers || [];
+            const a = next.afternoonTgOfficers || [];
+            next.tgOfficers = Array.from(new Set([...m, ...a])).filter(Boolean);
+          }
+          return next;
+        }
+        return d;
+      });
+    });
+  };
+
+  // Keep study days list initialized/updated when Course or Start Date changes
+  useEffect(() => {
+    if (isAssignmentModalOpen && !editingSessionId) {
+      if (selCourseId !== prevSelCourseId || assignStartDate !== prevAssignStartDate) {
+        setPrevSelCourseId(selCourseId);
+        setPrevAssignStartDate(assignStartDate);
+        
+        const selected = courses.find(c => c.id === selCourseId);
+        const duration = selected?.durationDays || 1;
+        const isTFoetCourse = !!(selected && 
+          (selected.code?.toUpperCase().includes('T.FOET') || 
+           selected.title?.toUpperCase().includes('T.FOET')));
+
+        const defaultRoom = activeClassrooms?.[0]?.name || '';
+
+        const newDays: CustomStudyDay[] = [];
+        if (isTFoetCourse) {
+          const tFoetModules = ["HUET", "SS", "FA", "FF.SR"];
+          tFoetModules.forEach((mod) => {
+            newDays.push({
+              id: `tfoet-${mod}-${Date.now()}-${Math.random()}`,
+              date: assignStartDate,
+              instructors: [''],
+              morningInstructors: [''],
+              afternoonInstructors: [''],
+              taOfficers: [],
+              tgOfficers: [],
+              morningTgOfficers: [],
+              afternoonTgOfficers: [],
+              startTime: '08:00',
+              endTime: '16:30',
+              classroom: defaultRoom,
+              moduleName: mod,
+              sessionType: 'Cả ngày'
+            });
+          });
+        } else {
+          for (let i = 1; i <= duration; i++) {
+            const computedDate = calculateEndDate(assignStartDate, i);
+            newDays.push({
+              id: `day-${i}-${Date.now()}-${Math.random()}`,
+              date: computedDate,
+              instructors: [''],
+              morningInstructors: [''],
+              afternoonInstructors: [''],
+              taOfficers: [],
+              tgOfficers: [],
+              morningTgOfficers: [],
+              afternoonTgOfficers: [],
+              startTime: '08:00',
+              endTime: '16:30',
+              classroom: defaultRoom
+            });
+          }
+        }
+        setCustomStudyDays(newDays);
+      }
+    } else {
+      setPrevSelCourseId('');
+      setPrevAssignStartDate('');
+    }
+  }, [isAssignmentModalOpen, selCourseId, assignStartDate, members, activeClassrooms]);
+
+  useEffect(() => {
+    if (activeClassrooms && activeClassrooms.length > 0 && !assignClassroom) {
+      setAssignClassroom(activeClassrooms[0].name);
+    }
+  }, [activeClassrooms, assignClassroom]);
 
   const [subModulesData, setSubModulesData] = useState<Record<string, {
     instructor: string;
@@ -630,37 +1428,222 @@ export default function TimelineView({
      selectedCourse.code?.toUpperCase().includes('T.BOSIET')) && 
     selectedCourse.domain === 'OPITO/GWO');
 
+  const isTFoet = !!(selectedCourse && 
+    (selectedCourse.code?.toUpperCase().includes('T.FOET') || 
+     selectedCourse.title?.toUpperCase().includes('T.FOET')));
+
   const [hseDaysData, setHseDaysData] = useState<Record<string, {
     date: string;
     theoryClassroom: string;
     practiceArea: string;
+    instructor?: string;
+    taOfficer?: string;
+    tgOfficer?: string;
+    startTime?: string;
+    endTime?: string;
   }>>({});
 
   const isHseMultiDay = !!(selectedCourse && selectedCourse.domain === 'HSE' && selectedCourse.durationDays && selectedCourse.durationDays > 1);
 
+  const currentStudyDaysConflicts = useMemo(() => {
+    const list: {
+      id: string;
+      date: string;
+      moduleName: string;
+      personnel: string;
+      classroom: string;
+      role: string;
+      conflictWith: string;
+      message: string;
+    }[] = [];
+
+    const isOnlineNew = isOpitoBosiet ? false : (assignMethod === 'Online');
+
+    customStudyDays.forEach((newDay, idx) => {
+      const newDayDate = new Date(newDay.date);
+      if (isNaN(newDayDate.getTime())) return;
+
+      const newDayInstructors = Array.from(new Set([
+        ...(newDay.instructors || []),
+        ...(newDay.morningInstructors || []),
+        ...(newDay.afternoonInstructors || [])
+      ])).filter(Boolean);
+
+      const newDayClassroom = newDay.classroom;
+      const newDayStartHour = newDay.startTime || '08:00';
+      const newDayEndHour = newDay.endTime || '16:30';
+      const newDayTas = newDay.taOfficers || [];
+      const newDayTgs = Array.from(new Set([
+        ...(newDay.tgOfficers || []),
+        ...(newDay.morningTgOfficers || []),
+        ...(newDay.afternoonTgOfficers || [])
+      ])).filter(Boolean);
+
+      sessions.forEach(existing => {
+        if (editingSessionId && existing.id === editingSessionId) return;
+        
+        // Check if existing session overlaps with this study day's date
+        const exStart = new Date(existing.startDate);
+        const exEnd = new Date(existing.endDate);
+        const dateOverlaps = newDayDate >= exStart && newDayDate <= exEnd;
+        if (!dateOverlaps) return;
+
+        // Extract detail about existing session on this date
+        let existingInstructor = existing.instructor;
+        let existingClassroom = existing.classroom;
+        let existingStartTime = existing.startTime;
+        let existingEndTime = existing.endTime;
+        let existingTa = existing.taOfficer || '';
+        let existingTg = existing.tgOfficer || '';
+
+        if (existing.subModules) {
+          Object.keys(existing.subModules).forEach(key => {
+            const val = existing.subModules?.[key];
+            if (val && typeof val === 'object' && val !== null) {
+              const obj = val as any;
+              if (obj.date === newDay.date) {
+                existingInstructor = obj.instructor || existingInstructor;
+                existingClassroom = obj.classroom || obj.theoryClassroom || existingClassroom;
+                existingStartTime = obj.startTime || existingStartTime;
+                existingEndTime = obj.endTime || existingEndTime;
+                if (obj.taOfficer) existingTa = obj.taOfficer;
+                if (obj.tgOfficer) existingTg = obj.tgOfficer;
+              }
+            }
+          });
+        }
+
+        // Time overlap check on this day
+        const timesOverlap = newDayStartHour < existingEndTime && newDayEndHour > existingStartTime;
+        if (!timesOverlap) return;
+
+        const matchedCourse = courses.find(c => c.id === existing.courseId);
+        const code = matchedCourse ? matchedCourse.code : 'Lớp học';
+        const isOnlineExisting = existing.method === 'Online';
+
+        // 1. Classroom check
+        if (!isOnlineNew && !isOnlineExisting) {
+          if (existingClassroom && newDayClassroom && existingClassroom === newDayClassroom) {
+            list.push({
+              id: `room-${existing.id}-${idx}`,
+              date: formatDate(newDay.date),
+              moduleName: newDay.moduleName || `Ngày ${idx + 1}`,
+              personnel: '-',
+              classroom: newDayClassroom,
+              role: 'Phòng học',
+              conflictWith: `${code} (${existingStartTime} - ${existingEndTime})`,
+              message: `Phòng học "${newDayClassroom}" trùng lịch với lớp "${code}".`
+            });
+          }
+        }
+
+        // 2. Instructor check
+        newDayInstructors.forEach(newDayInstructor => {
+          if (newDayInstructor && existingInstructor && hasInstructorOverlap(newDayInstructor, existingInstructor)) {
+            const conflictName = newDayInstructor.split(' (')[0];
+            const isSameCourseName = selCourseId === existing.courseId || assignCourseCode === code;
+            const isOneOrBothOnline = isOnlineNew || isOnlineExisting;
+            if (!(isSameCourseName && isOneOrBothOnline)) {
+              list.push({
+                id: `inst-${existing.id}-${idx}-${newDayInstructor}`,
+                date: formatDate(newDay.date),
+                moduleName: newDay.moduleName || `Ngày ${idx + 1}`,
+                personnel: conflictName,
+                classroom: newDayClassroom || '-',
+                role: 'Giảng viên',
+                conflictWith: `${code} (${existingStartTime} - ${existingEndTime})`,
+                message: `Giảng viên "${conflictName}" trùng lịch với lớp "${code}".`
+              });
+            }
+          }
+        });
+
+        // 3. TA check
+        if (!isOnlineNew && !isOnlineExisting && newDayTas.length > 0 && existingTa) {
+          const existingTas = existingTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+          newDayTas.forEach(newDayTa => {
+            const newTas = newDayTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+            const hasOverlap = newTas.some(nt => existingTas.some(et => nt.toLowerCase() === et.toLowerCase() || nt.toLowerCase().includes(et.toLowerCase()) || et.toLowerCase().includes(nt.toLowerCase())));
+            if (hasOverlap) {
+              list.push({
+                id: `ta-${existing.id}-${idx}-${newDayTa}`,
+                date: formatDate(newDay.date),
+                moduleName: newDay.moduleName || `Ngày ${idx + 1}`,
+                personnel: newDayTa,
+                classroom: newDayClassroom || '-',
+                role: 'Phụ giảng',
+                conflictWith: `${code} (${existingStartTime} - ${existingEndTime})`,
+                message: `Phụ giảng "${newDayTa}" trùng lịch với lớp Offline "${code}".`
+              });
+            }
+          });
+        }
+
+        // 4. TG check
+        if (!isOnlineNew && !isOnlineExisting && newDayTgs.length > 0 && existingTg) {
+          const existingTgs = existingTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+          newDayTgs.forEach(newDayTg => {
+            const newTgs = newDayTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+            const hasOverlap = newTgs.some(nt => existingTgs.some(et => nt.toLowerCase() === et.toLowerCase() || nt.toLowerCase().includes(et.toLowerCase()) || et.toLowerCase().includes(nt.toLowerCase())));
+            if (hasOverlap) {
+              list.push({
+                id: `tg-${existing.id}-${idx}-${newDayTg}`,
+                date: formatDate(newDay.date),
+                moduleName: newDay.moduleName || `Ngày ${idx + 1}`,
+                personnel: newDayTg,
+                classroom: newDayClassroom || '-',
+                role: 'Trợ giảng',
+                conflictWith: `${code} (${existingStartTime} - ${existingEndTime})`,
+                message: `Trợ giảng "${newDayTg}" trùng lịch với lớp Offline "${code}".`
+              });
+            }
+          });
+        }
+      });
+    });
+
+    return list;
+  }, [customStudyDays, sessions, editingSessionId, assignMethod, isOpitoBosiet, selCourseId, assignCourseCode, courses]);
+
   useEffect(() => {
     if (!selCourseId) return;
     const selected = courses.find(c => c.id === selCourseId);
-    if (selected && selected.domain === 'HSE') {
+    if (selected) {
       const duration = selected.durationDays || 1;
       const computedEnd = calculateEndDate(assignStartDate, duration);
       setAssignEndDate(computedEnd);
 
-      if (duration > 1) {
-        const initialDays: Record<string, { date: string; theoryClassroom: string; practiceArea: string }> = {};
-        for (let i = 1; i <= duration; i++) {
-          const computedDate = calculateEndDate(assignStartDate, i);
-          const key = `Day ${i}`;
-          initialDays[key] = {
-            date: computedDate,
-            theoryClassroom: hseDaysData[key]?.theoryClassroom || assignClassroom || (activeClassrooms[0]?.name || ''),
-            practiceArea: hseDaysData[key]?.practiceArea || ''
-          };
+      if (selected.domain === 'HSE') {
+        if (duration > 1) {
+          const initialDays: Record<string, {
+            date: string;
+            theoryClassroom: string;
+            practiceArea: string;
+            instructor: string;
+            taOfficer: string;
+            tgOfficer: string;
+            startTime: string;
+            endTime: string;
+          }> = {};
+          for (let i = 1; i <= duration; i++) {
+            const computedDate = calculateEndDate(assignStartDate, i);
+            const key = `Day ${i}`;
+            initialDays[key] = {
+              date: computedDate,
+              theoryClassroom: hseDaysData[key]?.theoryClassroom || assignClassroom || (activeClassrooms[0]?.name || ''),
+              practiceArea: hseDaysData[key]?.practiceArea || '',
+              instructor: hseDaysData[key]?.instructor || assignInstructor || '',
+              taOfficer: hseDaysData[key]?.taOfficer || assignTa || '',
+              tgOfficer: hseDaysData[key]?.tgOfficer || assignTg || '',
+              startTime: hseDaysData[key]?.startTime || assignStartTime || '08:00',
+              endTime: hseDaysData[key]?.endTime || assignEndTime || '16:30'
+            };
+          }
+          setHseDaysData(initialDays);
         }
-        setHseDaysData(initialDays);
       }
     }
-  }, [selCourseId, assignStartDate, assignClassroom]);
+  }, [selCourseId, assignStartDate, assignClassroom, assignInstructor, assignTa, assignTg, assignStartTime, assignEndTime]);
 
   useEffect(() => {
     if (!popupCourseSession || !isEditingSession) return;
@@ -673,14 +1656,31 @@ export default function TimelineView({
       if (duration > 1) {
         setEditSubModules(prev => {
           const next = { ...prev };
+          const existingSubModules = popupCourseSession.session.subModules || {};
           for (let i = 1; i <= duration; i++) {
             const key = `Day ${i}`;
             const computedDate = calculateEndDate(editStartDate, i);
+            const existingDay = existingSubModules[key] || {};
             next[key] = {
-              ...(next[key] || { instructor: editInstructor || "", startTime: "08:00", endTime: "16:30", classroom: editClassroom || "" }),
+              ...(next[key] || { 
+                instructor: existingDay.instructor || editInstructor || "", 
+                startTime: existingDay.startTime || editStartTime || "08:00", 
+                endTime: existingDay.endTime || editEndTime || "16:30", 
+                classroom: existingDay.classroom || existingDay.theoryClassroom || editClassroom || "",
+                theoryClassroom: existingDay.theoryClassroom || existingDay.classroom || editClassroom || "",
+                practiceArea: existingDay.practiceArea || "",
+                taOfficer: existingDay.taOfficer || editTaOfficer || "",
+                tgOfficer: existingDay.tgOfficer || editTgOfficer || ""
+              }),
               date: computedDate,
-              theoryClassroom: next[key]?.theoryClassroom || next[key]?.classroom || editClassroom || "",
-              classroom: next[key]?.classroom || editClassroom || ""
+              theoryClassroom: next[key]?.theoryClassroom || next[key]?.classroom || existingDay.theoryClassroom || existingDay.classroom || editClassroom || "",
+              classroom: next[key]?.classroom || existingDay.classroom || existingDay.theoryClassroom || editClassroom || "",
+              practiceArea: next[key]?.practiceArea || existingDay.practiceArea || "",
+              instructor: next[key]?.instructor || existingDay.instructor || editInstructor || "",
+              taOfficer: next[key]?.taOfficer || existingDay.taOfficer || editTaOfficer || "",
+              tgOfficer: next[key]?.tgOfficer || existingDay.tgOfficer || editTgOfficer || "",
+              startTime: next[key]?.startTime || existingDay.startTime || editStartTime || "08:00",
+              endTime: next[key]?.endTime || existingDay.endTime || editEndTime || "16:30"
             };
           }
           return next;
@@ -711,17 +1711,6 @@ export default function TimelineView({
     });
   };
 
-  const getBaseInstructorName = (fullname: string): string => {
-    if (!fullname) return '';
-    return fullname.split(' (')[0].trim().toLowerCase();
-  };
-
-  const hasInstructorOverlap = (inst1: string, inst2: string): boolean => {
-    const norm1 = getBaseInstructorName(inst1);
-    const norm2 = getBaseInstructorName(inst2);
-    return norm1 && norm2 && (norm1 === norm2 || norm1.includes(norm2) || norm2.includes(norm1));
-  };
-
   const handlePublishAssignment = (e: FormEvent) => {
     e.preventDefault();
     setAssignFeedback(null);
@@ -730,213 +1719,250 @@ export default function TimelineView({
       setAssignFeedback({ type: 'error', message: 'Vui lòng chọn một khóa học học thuật để bắt đầu.' });
       return;
     }
-    if (!assignStartDate || !assignEndDate) {
-      setAssignFeedback({ type: 'error', message: 'Yêu cầu điền đầy đủ cả Ngày Bắt đầu và Ngày Kết thúc.' });
-      return;
-    }
-    if (new Date(assignStartDate) > new Date(assignEndDate)) {
-      setAssignFeedback({ type: 'error', message: 'Ngày bắt đầu không được trễ hơn Ngày kết thúc.' });
+
+    if (customStudyDays.length === 0) {
+      setAssignFeedback({ type: 'error', message: 'Vui lòng thêm ít nhất một ngày học.' });
       return;
     }
 
-    const testConflicts: string[] = [];
-    const newStart = new Date(assignStartDate);
-    const newEnd = new Date(assignEndDate);
+    if (customStudyDays.some(d => !d.date)) {
+      setAssignFeedback({ type: 'error', message: 'Tất cả các ngày học yêu cầu điền đầy đủ Ngày học.' });
+      return;
+    }
+
+    // Determine min and max dates
+    const dates = customStudyDays.map(d => d.date).filter(Boolean);
+    const sortedDates = [...dates].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    const computedStartDate = sortedDates[0] || getTodayString();
+    const computedEndDate = sortedDates[sortedDates.length - 1] || computedStartDate;
 
     const isOnlineNew = isOpitoBosiet ? false : (assignMethod === 'Online');
+    const testConflicts: string[] = [];
 
-    const currentSchedInstructors: string[] = [];
-    if (isOpitoBosiet) {
-      Object.keys(subModulesData).forEach(key => {
-        if (subModulesData[key].instructor) {
-          currentSchedInstructors.push(subModulesData[key].instructor);
-        }
-      });
-    } else {
-      if (assignInstructor) {
-        currentSchedInstructors.push(assignInstructor);
-      }
-    }
+    // Perform day-by-day conflict checking
+    customStudyDays.forEach((newDay, idx) => {
+      const newDayDate = new Date(newDay.date);
+      if (isNaN(newDayDate.getTime())) return;
 
-    sessions.forEach(existing => {
-      const exStart = new Date(existing.startDate);
-      const exEnd = new Date(existing.endDate);
-      const datesOverlap = newStart <= exEnd && newEnd >= exStart;
-      if (!datesOverlap) return;
+      const newDayInstructors = newDay.instructors || [];
+      const newDayClassroom = newDay.classroom;
+      const newDayStartHour = newDay.startTime || '08:00';
+      const newDayEndHour = newDay.endTime || '16:30';
+      const newDayTas = newDay.taOfficers || [];
+      const newDayTgs = newDay.tgOfficers || [];
 
-      const timesOverlap = assignStartTime < existing.endTime && assignEndTime > existing.startTime;
-      if (!timesOverlap) return;
+      sessions.forEach(existing => {
+        if (editingSessionId && existing.id === editingSessionId) return;
+        // Check if existing session overlaps with this study day's date
+        const exStart = new Date(existing.startDate);
+        const exEnd = new Date(existing.endDate);
+        const dateOverlaps = newDayDate >= exStart && newDayDate <= exEnd;
+        if (!dateOverlaps) return;
 
-      const matchedCourse = courses.find(c => c.id === existing.courseId);
-      const code = matchedCourse ? matchedCourse.code : 'Lớp học';
+        // Check if existing session has a specific subModule on this exact date
+        let existingInstructor = existing.instructor;
+        let existingClassroom = existing.classroom;
+        let existingStartTime = existing.startTime;
+        let existingEndTime = existing.endTime;
+        let existingTa = existing.taOfficer || '';
+        let existingTg = existing.tgOfficer || '';
 
-      const isOnlineExisting = existing.method === 'Online';
-
-      // 1. Classroom check: Only if both courses are Offline
-      if (!isOnlineNew && !isOnlineExisting) {
-        if (existing.classroom === assignClassroom) {
-          testConflicts.push(`Phòng học "${assignClassroom}" đã có lịch đăng ký bởi lớp "${code}" từ ${formatDate(existing.startDate)} đến ${formatDate(existing.endDate)}`);
-        }
-      }
-
-      // 2. Instructor check:
-      const existingInstructors: string[] = [];
-      if (existing.subModules) {
-        Object.keys(existing.subModules).forEach(key => {
-          const val = existing.subModules?.[key];
-          if (val) {
-            if (typeof val === 'object' && val !== null) {
+        if (existing.subModules) {
+          Object.keys(existing.subModules).forEach(key => {
+            const val = existing.subModules?.[key];
+            if (val && typeof val === 'object' && val !== null) {
               const obj = val as any;
-              if (obj.instructor) {
-                existingInstructors.push(obj.instructor);
+              if (obj.date === newDay.date) {
+                existingInstructor = obj.instructor || existingInstructor;
+                existingClassroom = obj.classroom || obj.theoryClassroom || existingClassroom;
+                existingStartTime = obj.startTime || existingStartTime;
+                existingEndTime = obj.endTime || existingEndTime;
+                if (obj.taOfficer) existingTa = obj.taOfficer;
+                if (obj.tgOfficer) existingTg = obj.tgOfficer;
               }
-            } else if (typeof val === 'string') {
-              existingInstructors.push(val);
+            }
+          });
+        }
+
+        // Time overlap check on this day
+        const timesOverlap = newDayStartHour < existingEndTime && newDayEndHour > existingStartTime;
+        if (!timesOverlap) return;
+
+        const matchedCourse = courses.find(c => c.id === existing.courseId);
+        const code = matchedCourse ? matchedCourse.code : 'Lớp học';
+        const isOnlineExisting = existing.method === 'Online';
+
+        // 1. Classroom check
+        if (!isOnlineNew && !isOnlineExisting) {
+          if (existingClassroom && newDayClassroom && existingClassroom === newDayClassroom) {
+            testConflicts.push(`Ngày ${idx + 1} (${formatDate(newDay.date)}): Phòng học "${newDayClassroom}" đã có lịch bởi lớp "${code}" (${existingStartTime} - ${existingEndTime}).`);
+          }
+        }
+
+        // 2. Instructor check
+        newDayInstructors.forEach(newDayInstructor => {
+          if (newDayInstructor && existingInstructor && hasInstructorOverlap(newDayInstructor, existingInstructor)) {
+            const conflictName = newDayInstructor.split(' (')[0];
+            const isSameCourseName = selCourseId === existing.courseId || assignCourseCode === code || assignCourseName === (matchedCourse ? matchedCourse.title : '');
+            const isOneOrBothOnline = isOnlineNew || isOnlineExisting;
+            if (!(isSameCourseName && isOneOrBothOnline)) {
+              testConflicts.push(`Ngày ${idx + 1} (${formatDate(newDay.date)}): Giảng viên "${conflictName}" trùng lịch với lớp "${code}" (${existingStartTime} - ${existingEndTime}).`);
             }
           }
         });
-      }
-      if (existing.instructor) {
-        existingInstructors.push(existing.instructor);
-      }
 
-      let conflictInstructorName = '';
-      const hasInstConflict = currentSchedInstructors.some(currInst => {
-        return existingInstructors.some(exInst => {
-          if (hasInstructorOverlap(currInst, exInst)) {
-            conflictInstructorName = currInst.split(' (')[0];
-            return true;
-          }
-          return false;
-        });
+        // 3. TA check
+        if (!isOnlineNew && !isOnlineExisting && newDayTas.length > 0 && existingTa) {
+          const existingTas = existingTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+          newDayTas.forEach(newDayTa => {
+            const newTas = newDayTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+            const hasOverlap = newTas.some(nt => existingTas.some(et => nt.toLowerCase() === et.toLowerCase() || nt.toLowerCase().includes(et.toLowerCase()) || et.toLowerCase().includes(nt.toLowerCase())));
+            if (hasOverlap) {
+              testConflicts.push(`Ngày ${idx + 1} (${formatDate(newDay.date)}): Phụ giảng "${newDayTa}" trùng lịch với lớp Offline "${code}".`);
+            }
+          });
+        }
+
+        // 4. TG check
+        if (!isOnlineNew && !isOnlineExisting && newDayTgs.length > 0 && existingTg) {
+          const existingTgs = existingTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+          newDayTgs.forEach(newDayTg => {
+            const newTgs = newDayTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+            const hasOverlap = newTgs.some(nt => existingTgs.some(et => nt.toLowerCase() === et.toLowerCase() || nt.toLowerCase().includes(et.toLowerCase()) || et.toLowerCase().includes(nt.toLowerCase())));
+            if (hasOverlap) {
+              testConflicts.push(`Ngày ${idx + 1} (${formatDate(newDay.date)}): Trợ giảng "${newDayTg}" trùng lịch với lớp Offline "${code}".`);
+            }
+          });
+        }
       });
-
-      if (hasInstConflict) {
-        const isSameCourseName = selCourseId === existing.courseId || assignCourseCode === code || assignCourseName === (matchedCourse ? matchedCourse.title : '');
-        const isOneOrBothOnline = isOnlineNew || isOnlineExisting;
-        if (isSameCourseName && isOneOrBothOnline) {
-          // Rule 2: If both Online & Offline share same name and instructor, ignore instructor conflict
-        } else {
-          // Rule 3: booked for a different course at same time is a conflict
-          testConflicts.push(`Giảng viên "${conflictInstructorName}" đã được phân bổ cho lớp "${code}" trong cùng khoảng thời gian.`);
-        }
-      }
-
-      // 3. TA check: TA can be at any Online Courses at the same time without any conflicts.
-      // So TA overlap conflicts only occur if BOTH courses are Offline.
-      if (!isOnlineNew && !isOnlineExisting && assignTa && existing.taOfficer) {
-        const newTas = assignTa.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-        const existingTas = existing.taOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-        
-        let conflictingTaName = '';
-        const hasOverlap = newTas.some(nt => {
-          return existingTas.some(et => {
-            const ntL = nt.toLowerCase();
-            const etL = et.toLowerCase();
-            if (ntL && etL && (ntL.includes(etL) || etL.includes(ntL))) {
-              conflictingTaName = et;
-              return true;
-            }
-            return false;
-          });
-        });
-
-        if (hasOverlap) {
-          testConflicts.push(`Phụ giảng "${conflictingTaName}" không thể tham gia nhiều lớp Offline cùng lúc (Đã có lịch lớp "${code}").`);
-        }
-      }
-
-      // 4. TG check: similar to TA, only conflicts if BOTH are Offline.
-      if (!isOnlineNew && !isOnlineExisting && assignTg && existing.tgOfficer) {
-        const newTgs = assignTg.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-        const existingTgs = existing.tgOfficer.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-        
-        let conflictingTgName = '';
-        const hasOverlap = newTgs.some(nt => {
-          return existingTgs.some(et => {
-            const ntL = nt.toLowerCase();
-            const etL = et.toLowerCase();
-            if (ntL && etL && (ntL.includes(etL) || etL.includes(ntL))) {
-              conflictingTgName = et;
-              return true;
-            }
-            return false;
-          });
-        });
-
-        if (hasOverlap) {
-          testConflicts.push(`Trợ giảng "${conflictingTgName}" không thể tham gia nhiều lớp Offline cùng lúc (Đã có lịch lớp "${code}").`);
-        }
-      }
     });
 
+    let warningSuffix = "";
     if (testConflicts.length > 0) {
-      setAssignFeedback({ type: 'error', message: `Xung đột lịch học: ${testConflicts[0]}` });
-      return;
+      warningSuffix = " (Lưu ý: Có lịch trùng lặp nhưng vẫn được xác nhận thành công)";
+    }
+
+    const allInstructors = customStudyDays.flatMap(d => {
+      const morn = d.morningInstructors || [];
+      const aft = d.afternoonInstructors || [];
+      return [...morn, ...aft, ...d.instructors];
+    });
+    const sessionInstructor = Array.from(new Set(allInstructors)).filter(Boolean).join(', ') || 'Đội ngũ Giảng viên';
+    const sessionClassroom = customStudyDays[0]?.classroom || '';
+    const sessionStartTime = customStudyDays[0]?.startTime || '08:00';
+    const sessionEndTime = customStudyDays[0]?.endTime || '16:30';
+    const sessionTa = Array.from(new Set(customStudyDays.flatMap(d => d.taOfficers).filter(Boolean))).join(', ') || undefined;
+    const sessionTg = Array.from(new Set(customStudyDays.flatMap(d => {
+      const mornTg = d.morningTgOfficers || [];
+      const aftTg = d.afternoonTgOfficers || [];
+      return [...mornTg, ...aftTg, ...d.tgOfficers];
+    }).filter(Boolean))).join(', ') || undefined;
+
+    // Create subModules from custom study days
+    const subModules: Record<string, any> = {};
+    customStudyDays.forEach((day, index) => {
+      const morn = day.morningInstructors || [];
+      const aft = day.afternoonInstructors || [];
+      const combinedInst = Array.from(new Set([...morn, ...aft, ...day.instructors])).filter(Boolean);
+
+      const mornTg = day.morningTgOfficers || [];
+      const aftTg = day.afternoonTgOfficers || [];
+      const combinedTg = Array.from(new Set([...mornTg, ...aftTg, ...day.tgOfficers])).filter(Boolean);
+
+      const keyName = day.moduleName || `Day ${index + 1}`;
+
+      subModules[keyName] = {
+        instructor: combinedInst.join(', '),
+        morningInstructors: morn,
+        afternoonInstructors: aft,
+        date: day.date,
+        startTime: day.startTime || '08:00',
+        endTime: day.endTime || '16:30',
+        classroom: day.classroom,
+        theoryClassroom: day.classroom,
+        practiceArea: '',
+        taOfficer: day.taOfficers.filter(Boolean).join(', '),
+        tgOfficer: combinedTg.filter(Boolean).join(', '),
+        tgOfficers: combinedTg,
+        morningTgOfficers: mornTg,
+        afternoonTgOfficers: aftTg,
+        sessionType: day.sessionType
+      };
+    });
+
+    const currentEnrolledIds = editingSessionId ? (sessions.find(s => s.id === editingSessionId)?.enrolledIds || []) : [];
+    let updatedEnrolledIds = [...currentEnrolledIds];
+    const studentsCount = isNaN(assignStudentsCount) ? 0 : assignStudentsCount;
+
+    if (updatedEnrolledIds.length < studentsCount) {
+      const diff = studentsCount - updatedEnrolledIds.length;
+      for (let i = 0; i < diff; i++) {
+        updatedEnrolledIds.push(`student-manual-${Date.now()}-${Math.random()}`);
+      }
+    } else if (updatedEnrolledIds.length > studentsCount) {
+      updatedEnrolledIds = updatedEnrolledIds.slice(0, studentsCount);
     }
 
     const newSessionObject: CourseSession = {
-      id: `s-custom-${Date.now()}`,
+      id: editingSessionId || `s-custom-${Date.now()}`,
       courseId: selCourseId,
-      startDate: assignStartDate,
-      endDate: assignEndDate,
-      startTime: assignStartTime,
-      endTime: assignEndTime,
-      instructor: isOpitoBosiet 
-        ? Object.values(subModulesData).map((val: any) => val.instructor).filter(Boolean).join(', ') || 'Đội ngũ Giảng viên'
-        : assignInstructor,
-      classroom: assignClassroom,
+      sessionCode: assignSessionCode,
+      startDate: computedStartDate,
+      endDate: computedEndDate,
+      startTime: sessionStartTime,
+      endTime: sessionEndTime,
+      instructor: sessionInstructor,
+      classroom: sessionClassroom,
       maxCapacity: assignCapacity,
-      enrolledIds: [],
-      taOfficer: assignTa || undefined,
-      tgOfficer: assignTg || undefined,
+      enrolledIds: updatedEnrolledIds,
+      taOfficer: sessionTa,
+      tgOfficer: sessionTg,
       method: isOpitoBosiet ? 'Offline' : assignMethod,
       notes: assignNote || undefined,
       domain: assignDomain,
-      subModules: isOpitoBosiet 
-        ? subModulesData 
-        : (isHseMultiDay 
-            ? Object.keys(hseDaysData).reduce((acc, key) => {
-                const item = hseDaysData[key];
-                acc[key] = {
-                  instructor: assignInstructor,
-                  date: item.date,
-                  startTime: assignStartTime,
-                  endTime: assignEndTime,
-                  classroom: item.theoryClassroom,
-                  theoryClassroom: item.theoryClassroom,
-                  practiceArea: item.practiceArea
-                };
-                return acc;
-              }, {} as any)
-            : undefined),
+      subModules: subModules
     };
 
-    if (onAddSession) {
-      onAddSession(newSessionObject);
-      setAssignFeedback({ 
-        type: 'success', 
-        message: `Lớp học cho khóa ${assignCourseCode} đã được phân lịch thành công.` 
-      });
-      // Clear specific temporary fields
-      setAssignTa('');
-      setAssignTg('');
-      setAssignNote('');
-      setAssignMethod('Offline');
-      setSubModulesData({
-        "OSI": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
-        "HE": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
-        "SS": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
-        "FF": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
-        "FA": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
-        "HE (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
-        "FF.SR (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
-        "SS (P)": { instructor: "", date: "", startTime: "08:00", endTime: "16:30", classroom: "" },
-      });
-      // Auto close the course assignment window after completion
-      setIsAssignmentModalOpen(false);
+    if (editingSessionId) {
+      if (onUpdateSession) {
+        onUpdateSession(newSessionObject);
+
+        // Update Course Name if it changed!
+        const matchedCourse = courses.find(c => c.id === selCourseId);
+        if (matchedCourse && matchedCourse.title !== assignCourseName && onUpdateCourse) {
+          onUpdateCourse({ ...matchedCourse, title: assignCourseName });
+        }
+
+        setAssignFeedback({ 
+          type: 'success', 
+          message: `Lớp học cho khóa ${assignCourseCode} đã được cập nhật thành công.${warningSuffix}` 
+        });
+        setAssignTa('');
+        setAssignTg('');
+        setAssignNote('');
+        setAssignMethod('Offline');
+        setAssignStudentsCount(0);
+        setEditingSessionId(null);
+        setIsAssignmentModalOpen(false);
+      } else {
+        setAssignFeedback({ type: 'error', message: 'Không thể cập nhật lịch học: Trình điều phối onUpdateSession chưa được kết nối.' });
+      }
     } else {
-      setAssignFeedback({ type: 'error', message: 'Không thể đăng lịch học: Trình điều phối onAddSession chưa được kết nối.' });
+      if (onAddSession) {
+        onAddSession(newSessionObject);
+        setAssignFeedback({ 
+          type: 'success', 
+          message: `Lớp học cho khóa ${assignCourseCode} đã được phân lịch thành công.${warningSuffix}` 
+        });
+        // Clear specific temporary fields
+        setAssignTa('');
+        setAssignTg('');
+        setAssignNote('');
+        setAssignMethod('Offline');
+        setIsAssignmentModalOpen(false);
+      } else {
+        setAssignFeedback({ type: 'error', message: 'Không thể đăng lịch học: Trình điều phối onAddSession chưa được kết nối.' });
+      }
     }
   };
 
@@ -1181,18 +2207,18 @@ export default function TimelineView({
       {isAssignmentModalOpen && (
         <div 
           id="courses-assignment-modal-backdrop" 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-950/20 backdrop-blur-xs flex items-center justify-center p-0 z-[9999] animate-in fade-in duration-200"
         >
           <div 
             id="courses-assignment-modal-card" 
-            className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+            className="bg-white w-screen h-screen flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-200"
           >
             {/* Modal Header */}
             <div className="px-6 py-4.5 bg-gradient-to-r from-slate-50 to-slate-100/50 border-b border-slate-200 flex items-center justify-between">
               <div>
                 <h3 className="text-md font-bold text-slate-900 flex items-center gap-2">
                   <Settings className="h-4.5 w-4.5 text-[#559b8c]" />
-                  Đăng ký Khóa học
+                  {editingSessionId ? "Cập nhật Lớp học đã đăng ký" : "Đăng ký Khóa học"}
                 </h3>
               </div>
               <button
@@ -1201,6 +2227,7 @@ export default function TimelineView({
                 onClick={() => {
                   setIsAssignmentModalOpen(false);
                   setAssignFeedback(null);
+                  setEditingSessionId(null);
                 }}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-650 hover:bg-slate-100 cursor-pointer transition-colors"
                 title="Đóng Cửa sổ"
@@ -1209,14 +2236,26 @@ export default function TimelineView({
               </button>
             </div>
 
-            {/* Modal Content - Two Panel Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 overflow-hidden flex-1 divide-y lg:divide-y-0 lg:divide-x divide-slate-150">
-              
-              {/* Left Column: Form (7cols) */}
-              <div className="lg:col-span-7 p-6 overflow-y-auto max-h-[calc(92vh-140px)] space-y-4">
-                <form id="course-assignment-form" onSubmit={handlePublishAssignment} className="space-y-4">
-                  {/* Course Selection block */}
-                  <div className="space-y-1 bg-slate-50 p-4 rounded-xl border border-slate-150 text-left">
+            {/* Modal Content - Simple Form */}
+            <div className="p-6 md:p-8 overflow-y-auto flex-1 bg-slate-50/50">
+              <form id="course-assignment-form" onSubmit={handlePublishAssignment} className="space-y-6 max-w-7xl mx-auto">
+                {/* Course Selection block */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-3xs text-left">
+                  <div className="space-y-1 md:col-span-1">
+                    <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      Mã
+                    </label>
+                    <input
+                      id="assign-input-session-code"
+                      type="text"
+                      value={assignSessionCode}
+                      onChange={(e) => setAssignSessionCode(e.target.value)}
+                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                      placeholder="Mã..."
+                    />
+                  </div>
+
+                  <div className="space-y-1 md:col-span-2">
                     <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
                       Tên khóa học (Nội dung Đào tạo)
                     </label>
@@ -1232,615 +2271,951 @@ export default function TimelineView({
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  {/* Automatic Linked Properties Check Column */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Mã Khóa học
-                      </label>
-                      <input
-                        id="assign-input-course-code"
-                        type="text"
-                        readOnly
-                        value={assignCourseCode}
-                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none cursor-not-allowed font-semibold text-slate-600 focus:ring-none font-mono"
-                        title="Tự động liên kết với khóa đào tạo được chọn"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Lĩnh vực
-                      </label>
-                      <input
-                        id="assign-input-domain"
-                        type="text"
-                        readOnly
-                        value={assignDomain}
-                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none cursor-not-allowed font-semibold text-slate-600 focus:ring-none"
-                        title="Tự động xác định theo khóa học"
-                      />
-                    </div>
-                    {!isOpitoBosiet ? (
-                      <div>
-                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                          Hình thức học
-                        </label>
-                        <select
-                          id="assign-select-method"
-                          value={assignMethod}
-                          onChange={(e) => setAssignMethod(e.target.value as 'Online' | 'Offline')}
-                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                        >
-                          <option value="Offline">Trực tiếp (Offline)</option>
-                          <option value="Online">Trực tuyến (Online)</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                          Sĩ số lớp học
+                    {editingSessionId && (
+                      <div className="mt-2.5">
+                        <label className="block text-[9.5px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          Tên hiển thị tùy chỉnh (Chỉnh sửa nếu cần)
                         </label>
                         <input
-                          id="assign-input-capacity"
-                          type="number"
-                          required
-                          value={assignCapacity}
-                          onChange={(e) => setAssignCapacity(parseInt(e.target.value) || 20)}
-                          min={1}
-                          max={100}
-                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                          placeholder="Ví dụ: 25"
+                          id="assign-input-course-title-edit"
+                          type="text"
+                          value={assignCourseName}
+                          onChange={(e) => setAssignCourseName(e.target.value)}
+                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                          placeholder="Nhập tên khóa học..."
                         />
                       </div>
                     )}
                   </div>
 
-                  {/* Date range from - to */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Từ ngày
-                      </label>
-                      <input
-                        id="assign-input-start-date"
-                        type="date"
-                        required
-                        value={assignStartDate}
-                        onChange={(e) => setAssignStartDate(e.target.value)}
-                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-[#559b8c] font-mono font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Đến ngày
-                      </label>
-                      <input
-                        id="assign-input-end-date"
-                        type="date"
-                        required
-                        value={assignEndDate}
-                        onChange={(e) => setAssignEndDate(e.target.value)}
-                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-[#559b8c] font-mono font-bold"
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      Mã Khóa học
+                    </label>
+                    <input
+                      id="assign-input-course-code"
+                      type="text"
+                      readOnly
+                      value={assignCourseCode}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none cursor-not-allowed font-semibold text-slate-600 focus:ring-none font-mono"
+                      title="Tự động liên kết với khóa đào tạo được chọn"
+                    />
                   </div>
 
-                  {/* TA (Teaching Assisstance) & TG (Teacher Assistance) Fields */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
-                    {!isOpitoBosiet && (
-                      <div>
-                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                          Phụ giảng
-                        </label>
-                        <select
-                          id="assign-select-ta"
-                          value={assignTa}
-                          onChange={(e) => setAssignTa(e.target.value)}
-                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                        >
-                          <option value="">-- Trống --</option>
-                          {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
-                            <option key={m.id} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div className={isOpitoBosiet ? "col-span-1 sm:col-span-2" : ""}>
-                      <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                        Trợ giảng
-                      </label>
-                      <select
-                        id="assign-select-tg"
-                        value={assignTg}
-                        onChange={(e) => setAssignTg(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                      >
-                        <option value="">-- Trống --</option>
-                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
-                          <option key={m.id} value={m.name}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="space-y-1">
+                    <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      Lĩnh vực
+                    </label>
+                    <input
+                      id="assign-input-domain"
+                      type="text"
+                      readOnly
+                      value={assignDomain}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none cursor-not-allowed font-semibold text-slate-600 focus:ring-none"
+                      title="Tự động xác định theo khóa học"
+                    />
                   </div>
 
-                  {/* Instructor & Classroom Fields */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1 text-left">
-                    {!isOpitoBosiet ? (
-                      <>
-                        <div className={isHseMultiDay ? "col-span-1 sm:col-span-2" : ""}>
-                          <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                            Giảng viên
-                          </label>
-                          <select
-                            id="assign-select-instructor"
-                            value={assignInstructor}
-                            onChange={(e) => setAssignInstructor(e.target.value)}
-                            className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                          >
-                            {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
-                              <option key={m.id} value={m.name}>
-                                {m.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        
-                        {!isHseMultiDay ? (
-                          <div>
-                            <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                              Phòng học
-                            </label>
-                            <select
-                              id="assign-select-classroom"
-                              value={assignClassroom}
-                              onChange={(e) => setAssignClassroom(e.target.value)}
-                              className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                            >
-                              {activeClassrooms.map(room => (
-                                <option key={room.id} value={room.name}>
-                                  {room.name}
-                                </option>
-                              ))}
-                            </select>
+                  <div className="space-y-1">
+                    <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      Hình thức học
+                    </label>
+                    <select
+                      id="assign-select-method"
+                      value={isOpitoBosiet ? 'Offline' : assignMethod}
+                      disabled={isOpitoBosiet}
+                      onChange={(e) => setAssignMethod(e.target.value as 'Online' | 'Offline')}
+                      className={`w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] ${isOpitoBosiet ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <option value="Offline">Trực tiếp (Offline)</option>
+                      <option value="Online">Trực tuyến (Online)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      Học viên
+                    </label>
+                    <input
+                      id="assign-input-students-count"
+                      type="number"
+                      min="0"
+                      value={isNaN(assignStudentsCount) ? '' : assignStudentsCount}
+                      onChange={(e) => setAssignStudentsCount(parseInt(e.target.value))}
+                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                      placeholder="Số lượng học viên..."
+                    />
+                  </div>
+                </div>
+
+                {/* Custom Study Days (Dynamic Schedule Details) */}
+                <div className="space-y-4 text-left border-t border-slate-100 pt-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Calendar className="h-4.5 w-4.5 text-[#559b8c]" />
+                      Thông tin Ngày học &amp; Phân công
+                    </span>
+                  </div>
+
+                  <div className="space-y-4 lg:max-h-[calc(100vh-320px)] max-h-[500px] overflow-y-auto pr-1">
+                    {customStudyDays.map((day, idx) => (
+                      <div key={day.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 space-y-3 relative">
+                        {/* Day Header with date picker and inline add/delete buttons */}
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-150">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-extrabold text-[#559b8c]">
+                              {day.moduleName ? `Học phần ${day.moduleName}:` : `Ngày ${idx + 1}:`}
+                            </span>
+                            {/* Ngày học: date picker */}
+                            <input
+                              type="date"
+                              value={day.date}
+                              onChange={(e) => handleUpdateStudyDay(day.id, { date: e.target.value })}
+                              className="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none font-semibold text-slate-700 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                            />
+                            {/* Dấu cộng cho phép thêm ngày học */}
+                            {!day.moduleName && (
+                              <button
+                                type="button"
+                                onClick={handleAddStudyDay}
+                                className="p-1 rounded-md text-[#559b8c] hover:bg-[#559b8c]/10 cursor-pointer transition-colors"
+                                title="Thêm ngày học mới"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <div className="col-span-1 sm:col-span-2 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 space-y-4 mt-1 text-left">
-                            <div className="flex justify-between items-center pb-2 border-b border-emerald-100">
-                              <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">
-                                Phân bổ chi tiết các ngày học (Khóa HSE {selectedCourse?.durationDays} Ngày)
-                              </span>
-                              <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
-                                {selectedCourse?.durationDays} Ngày học
-                              </span>
-                            </div>
-                            <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1">
-                              {Array.from({ length: selectedCourse?.durationDays || 1 }).map((_, idx) => {
-                                const dayNum = idx + 1;
-                                const key = `Day ${dayNum}`;
-                                const dayData = hseDaysData[key] || { date: calculateEndDate(assignStartDate, dayNum), theoryClassroom: assignClassroom || '', practiceArea: '' };
-                                
-                                return (
-                                  <div key={key} className="bg-white border border-slate-100 p-3 rounded-xl space-y-3 shadow-3xs">
-                                    <div className="flex items-center justify-between border-b border-slate-50 pb-1.5 flex-row">
-                                      <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 uppercase">
-                                        <span className="h-1.5 w-1.5 rounded-full bg-[#549B8C]"></span>
-                                        Ngày {dayNum}
-                                      </span>
-                                      <span className="text-[11px] font-bold text-slate-500 font-mono">
-                                        {formatDate(dayData.date)}
-                                      </span>
+                          
+                          {customStudyDays.length > 1 && !day.moduleName && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveStudyDay(day.id)}
+                              className="p-1 rounded-md text-rose-500 hover:text-rose-750 hover:bg-rose-50 cursor-pointer transition-colors"
+                              title="Xóa ngày học này"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Fields: Phụ giảng, Trợ giảng, Giảng viên, Giờ học, phòng học */}
+                        {day.moduleName ? (
+                          // T.FOET Custom module fields block
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Buổi học & Phòng học */}
+                            <div className="space-y-4 p-3 bg-white/50 border border-slate-200/80 rounded-xl text-left">
+                              {/* Buổi học */}
+                              <div className="space-y-1.5">
+                                <label className="block text-[10px] font-black text-[#559b8c] uppercase tracking-wider">
+                                  Buổi học
+                                </label>
+                                <select
+                                  value={day.sessionType || 'Cả ngày'}
+                                  onChange={(e) => {
+                                    const val = e.target.value as 'Sáng' | 'Chiều' | 'Cả ngày';
+                                    let start = '08:00';
+                                    let end = '16:30';
+                                    if (val === 'Sáng') {
+                                      start = '08:00';
+                                      end = '12:00';
+                                    } else if (val === 'Chiều') {
+                                      start = '13:00';
+                                      end = '16:30';
+                                    }
+                                    handleUpdateStudyDay(day.id, { 
+                                      sessionType: val,
+                                      startTime: start,
+                                      endTime: end
+                                    });
+                                  }}
+                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                >
+                                  <option value="Cả ngày">Cả ngày (08:00 - 16:30)</option>
+                                  <option value="Sáng">Buổi Sáng (08:00 - 12:00)</option>
+                                  <option value="Chiều">Buổi Chiều (13:00 - 16:30)</option>
+                                </select>
+                              </div>
+
+                              {/* Phòng học */}
+                              <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                                <div className="flex items-center justify-between">
+                                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                    Phòng học
+                                  </label>
+                                  {!day.classroom && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleUpdateStudyDay(day.id, { classroom: ' ' });
+                                      }}
+                                      className="p-1 rounded-md text-[#559b8c] hover:bg-[#559b8c]/10 cursor-pointer transition-colors"
+                                      title="Thêm Phòng học"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                                {day.classroom && (
+                                  <div className="space-y-1.5 w-full">
+                                    <div className="flex items-center gap-1.5">
+                                      <select
+                                        value={
+                                          !day.classroom || day.classroom.trim() === "" 
+                                            ? "" 
+                                            : activeClassrooms.some(room => room.name === day.classroom.trim())
+                                              ? day.classroom.trim()
+                                              : "other"
+                                        }
+                                        onChange={(e) => {
+                                          if (e.target.value === "other") {
+                                            handleUpdateStudyDay(day.id, { classroom: "Cơ sở khác: " });
+                                          } else {
+                                            handleUpdateStudyDay(day.id, { classroom: e.target.value });
+                                          }
+                                        }}
+                                        className="flex-1 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                      >
+                                        <option value="">-- Chưa chọn --</option>
+                                        {activeClassrooms.map(room => (
+                                          <option key={room.id} value={room.name}>
+                                            {room.name}
+                                          </option>
+                                        ))}
+                                        <option value="other">Cơ sở khác</option>
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          handleUpdateStudyDay(day.id, { classroom: '' });
+                                        }}
+                                        className="p-1 text-rose-500 hover:text-rose-750 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                        title="Xóa phòng học"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
                                     </div>
+                                    {day.classroom && day.classroom.trim() !== "" && !activeClassrooms.some(room => room.name === day.classroom.trim()) && (
+                                      <input
+                                        type="text"
+                                        placeholder="Nhập tên Cơ sở khác..."
+                                        value={day.classroom.startsWith("Cơ sở khác: ") ? day.classroom.substring(12) : day.classroom}
+                                        onChange={(e) => {
+                                          handleUpdateStudyDay(day.id, { classroom: `Cơ sở khác: ${e.target.value}` });
+                                        }}
+                                        className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                      />
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-                                      {/* Theory Classroom */}
-                                      <div>
-                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                                          Phòng học lý thuyết
-                                        </label>
-                                        <select
-                                          value={dayData.theoryClassroom}
-                                          onChange={(e) => setHseDaysData(prev => ({
-                                            ...prev,
-                                            [key]: { ...prev[key], theoryClassroom: e.target.value }
-                                          }))}
-                                          className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
-                                        >
-                                          <option value="">-- Chọn phòng --</option>
-                                          {activeClassrooms.map(room => (
-                                            <option key={room.id} value={room.name}>
-                                              {room.name}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-
-                                      {/* Practical Training Area */}
-                                      <div>
-                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-sans">
-                                          Khu học thực hành
-                                        </label>
-                                        <div className="relative">
+                            {/* Giảng viên & Phụ giảng */}
+                            <div className="space-y-4 p-3 bg-white/50 border border-slate-200/80 rounded-xl text-left">
+                              {/* Giảng viên */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <label className="block text-[10px] font-black text-[#559b8c] uppercase tracking-wider">
+                                    Giảng viên
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = day.instructors || [];
+                                      handleUpdateStudyDay(day.id, { instructors: [...current, ''] });
+                                    }}
+                                    className="p-1 rounded-md text-[#559b8c] hover:bg-[#559b8c]/10 cursor-pointer transition-colors"
+                                    title="Thêm Giảng viên"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                <div className="space-y-1.5">
+                                  {(day.instructors || []).map((inst, instIdx) => {
+                                    const isExternal = inst && inst !== "" && !members.some(m => `${m.name} (${m.position || 'Giảng viên'})` === inst);
+                                    return (
+                                      <div key={instIdx} className="space-y-1 w-full border-b border-slate-100 pb-1.5 last:border-none last:pb-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <select
+                                            value={isExternal ? "external" : inst}
+                                            onChange={(e) => {
+                                              const current = [...(day.instructors || [])];
+                                              if (e.target.value === "external") {
+                                                current[instIdx] = "Giảng viên ngoài: ";
+                                              } else {
+                                                current[instIdx] = e.target.value;
+                                              }
+                                              handleUpdateStudyDay(day.id, { instructors: current });
+                                            }}
+                                            className="flex-1 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                          >
+                                            <option value="">-- Chọn Giảng viên --</option>
+                                            {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                              <option key={m.id} value={`${m.name} (${m.position || 'Giảng viên'})`}>
+                                                {m.name}
+                                              </option>
+                                            ))}
+                                            <option value="external">Giảng viên ngoài</option>
+                                          </select>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const current = (day.instructors || []).filter((_, idx) => idx !== instIdx);
+                                              handleUpdateStudyDay(day.id, { instructors: current });
+                                            }}
+                                            className="p-1 text-rose-500 hover:text-rose-750 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                            title="Xóa giảng viên này"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                        {isExternal && (
                                           <input
                                             type="text"
-                                            list={`practice-areas-list-${dayNum}`}
-                                            value={dayData.practiceArea}
-                                            onChange={(e) => setHseDaysData(prev => ({
-                                              ...prev,
-                                              [key]: { ...prev[key], practiceArea: e.target.value }
-                                            }))}
-                                            placeholder="Ví dụ: Bãi thực hành giàn giáo"
-                                            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                            value={inst.startsWith("Giảng viên ngoài: ") ? inst.substring("Giảng viên ngoài: ".length) : inst}
+                                            onChange={(e) => {
+                                              const current = [...(day.instructors || [])];
+                                              current[instIdx] = "Giảng viên ngoài: " + e.target.value;
+                                              handleUpdateStudyDay(day.id, { instructors: current });
+                                            }}
+                                            className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-850 focus:ring-1 focus:ring-[#559b8c]"
+                                            placeholder="Nhập tên giảng viên ngoài..."
                                           />
-                                          <datalist id={`practice-areas-list-${dayNum}`}>
-                                            <option value="Sân diễn tập Phòng cháy Chữa cháy (PCCC)" />
-                                            <option value="Bãi thực hành giàn giáo & Làm việc trên cao" />
-                                            <option value="Bể bơi huấn luyện Sinh tồn dưới nước (HUET)" />
-                                            <option value="Phòng giả lập Không gian hạn chế" />
-                                            <option value="Khu huấn luyện Sơ cấp cứu thực tế" />
-                                            <option value="Sân huấn luyện An toàn Lao động ngoài trời" />
-                                          </datalist>
-                                        </div>
+                                        )}
                                       </div>
+                                    );
+                                  })}
+                                  {(day.instructors || []).length === 0 && (
+                                    <div className="text-[11px] text-slate-400 italic font-sans">Chưa phân công giảng viên</div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Phụ giảng */}
+                              <div className="space-y-1.5 border-t border-slate-100 pt-3 mt-3">
+                                <div className="flex items-center justify-between">
+                                  <label className="block text-[10px] font-black text-[#559b8c] uppercase tracking-wider">
+                                    Phụ giảng (TA)
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = day.taOfficers || [];
+                                      handleUpdateStudyDay(day.id, { taOfficers: [...current, ''] });
+                                    }}
+                                    className="p-1 rounded-md text-[#559b8c] hover:bg-[#559b8c]/10 cursor-pointer transition-colors"
+                                    title="Thêm Phụ giảng"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                <div className="space-y-1.5">
+                                  {(day.taOfficers || []).map((ta, taIdx) => (
+                                    <div key={taIdx} className="flex items-center gap-1.5">
+                                      <select
+                                        value={ta}
+                                        onChange={(e) => {
+                                          const current = [...(day.taOfficers || [])];
+                                          current[taIdx] = e.target.value;
+                                          handleUpdateStudyDay(day.id, { taOfficers: current });
+                                        }}
+                                        className="flex-1 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-700 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                      >
+                                        <option value="">-- Chọn Phụ giảng --</option>
+                                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                          <option key={m.id} value={m.name}>
+                                            {m.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const current = (day.taOfficers || []).filter((_, idx) => idx !== taIdx);
+                                          handleUpdateStudyDay(day.id, { taOfficers: current });
+                                        }}
+                                        className="p-1 text-rose-500 hover:text-rose-750 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                        title="Xóa phụ giảng này"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
                                     </div>
-                                  </div>
-                                );
-                              })}
+                                  ))}
+                                  {(day.taOfficers || []).length === 0 && (
+                                    <div className="text-[11px] text-slate-400 italic font-sans">Chưa phân công phụ giảng</div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="col-span-1 sm:col-span-2 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/80 space-y-4 mt-1 text-left">
-                        <div className="flex justify-between items-center pb-2 border-b border-emerald-100">
-                          <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">
-                            Phân bổ chi tiết môn học nhỏ (BOSIET)
-                          </span>
-                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
-                            8 Môn học nhỏ
-                          </span>
-                        </div>
-                        <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
-                          {["OSI", "HE", "SS", "FF", "FA", "HE (P)", "FF.SR (P)", "SS (P)"].map((subject) => {
-                            const data = subModulesData[subject] || { instructor: "", date: "", startTime: "08:05", endTime: "16:30", classroom: "", taOfficers: [] };
-                            return (
-                              <div key={subject} className="bg-white border border-slate-100 p-3 rounded-xl space-y-3 shadow-3xs">
-                                <div className="flex items-center justify-between border-b border-slate-50 pb-1.5">
-                                  <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-[#559b8c]"></span>
-                                    Môn: <span className="text-[#559b8c] font-black">{subject}</span>
-                                  </span>
+                        ) : (
+                          // Standard study day fields
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Giảng viên */}
+                          <div className="space-y-4 p-3 bg-white/50 border border-slate-200/80 rounded-xl">
+                            {/* Giảng viên Sáng */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <label className="block text-[10px] font-black text-[#559b8c] uppercase tracking-wider">
+                                  Giảng viên Buổi Sáng
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = day.morningInstructors || [];
+                                    handleUpdateStudyDay(day.id, { morningInstructors: [...current, ''] });
+                                  }}
+                                  className="p-1 rounded-md text-[#559b8c] hover:bg-[#559b8c]/10 cursor-pointer transition-colors"
+                                  title="Thêm Giảng viên Sáng"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <div className="space-y-1.5">
+                                {(day.morningInstructors || []).map((inst, instIdx) => {
+                                  const isExternal = inst && inst !== "" && !members.some(m => `${m.name} (${m.position || 'Giảng viên'})` === inst);
+                                  return (
+                                    <div key={instIdx} className="space-y-1 w-full border-b border-slate-100 pb-1.5 last:border-none last:pb-0">
+                                      <div className="flex items-center gap-1.5">
+                                        <select
+                                          value={isExternal ? "external" : inst}
+                                          onChange={(e) => {
+                                            const current = [...(day.morningInstructors || [])];
+                                            if (e.target.value === "external") {
+                                              current[instIdx] = "Giảng viên ngoài: ";
+                                            } else {
+                                              current[instIdx] = e.target.value;
+                                            }
+                                            handleUpdateStudyDay(day.id, { morningInstructors: current });
+                                          }}
+                                          className="flex-1 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                        >
+                                          <option value="">-- Chọn Giảng viên Sáng --</option>
+                                          {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                            <option key={m.id} value={`${m.name} (${m.position || 'Giảng viên'})`}>
+                                              {m.name}
+                                            </option>
+                                          ))}
+                                          <option value="external">Giảng viên ngoài</option>
+                                        </select>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const current = (day.morningInstructors || []).filter((_, idx) => idx !== instIdx);
+                                            handleUpdateStudyDay(day.id, { morningInstructors: current });
+                                          }}
+                                          className="p-1 text-rose-500 hover:text-rose-700 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                          title="Xóa giảng viên này"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                      {isExternal && (
+                                        <input
+                                          type="text"
+                                          value={inst.startsWith("Giảng viên ngoài: ") ? inst.substring("Giảng viên ngoài: ".length) : inst}
+                                          onChange={(e) => {
+                                            const current = [...(day.morningInstructors || [])];
+                                            current[instIdx] = "Giảng viên ngoài: " + e.target.value;
+                                            handleUpdateStudyDay(day.id, { morningInstructors: current });
+                                          }}
+                                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-850 focus:ring-1 focus:ring-[#559b8c]"
+                                          placeholder="Nhập tên giảng viên ngoài..."
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                {(day.morningInstructors || []).length === 0 && (
+                                  <div className="text-[11px] text-slate-400 italic">Chưa phân công buổi sáng</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Giảng viên Chiều */}
+                            <div className="space-y-1.5 border-t border-slate-150 pt-2.5">
+                              <div className="flex items-center justify-between">
+                                <label className="block text-[10px] font-black text-amber-600 uppercase tracking-wider">
+                                  Giảng viên Buổi Chiều
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = day.afternoonInstructors || [];
+                                    handleUpdateStudyDay(day.id, { afternoonInstructors: [...current, ''] });
+                                  }}
+                                  className="p-1 rounded-md text-amber-600 hover:bg-amber-50 cursor-pointer transition-colors"
+                                  title="Thêm Giảng viên Chiều"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <div className="space-y-1.5">
+                                {(day.afternoonInstructors || []).map((inst, instIdx) => {
+                                  const isExternal = inst && inst !== "" && !members.some(m => `${m.name} (${m.position || 'Giảng viên'})` === inst);
+                                  return (
+                                    <div key={instIdx} className="space-y-1 w-full border-b border-slate-100 pb-1.5 last:border-none last:pb-0">
+                                      <div className="flex items-center gap-1.5">
+                                        <select
+                                          value={isExternal ? "external" : inst}
+                                          onChange={(e) => {
+                                            const current = [...(day.afternoonInstructors || [])];
+                                            if (e.target.value === "external") {
+                                              current[instIdx] = "Giảng viên ngoài: ";
+                                            } else {
+                                              current[instIdx] = e.target.value;
+                                            }
+                                            handleUpdateStudyDay(day.id, { afternoonInstructors: current });
+                                          }}
+                                          className="flex-1 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                        >
+                                          <option value="">-- Chọn Giảng viên Chiều --</option>
+                                          {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                            <option key={m.id} value={`${m.name} (${m.position || 'Giảng viên'})`}>
+                                              {m.name}
+                                            </option>
+                                          ))}
+                                          <option value="external">Giảng viên ngoài</option>
+                                        </select>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const current = (day.afternoonInstructors || []).filter((_, idx) => idx !== instIdx);
+                                            handleUpdateStudyDay(day.id, { afternoonInstructors: current });
+                                          }}
+                                          className="p-1 text-rose-500 hover:text-rose-700 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                          title="Xóa giảng viên này"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                      {isExternal && (
+                                        <input
+                                          type="text"
+                                          value={inst.startsWith("Giảng viên ngoài: ") ? inst.substring("Giảng viên ngoài: ".length) : inst}
+                                          onChange={(e) => {
+                                            const current = [...(day.afternoonInstructors || [])];
+                                            current[instIdx] = "Giảng viên ngoài: " + e.target.value;
+                                            handleUpdateStudyDay(day.id, { afternoonInstructors: current });
+                                          }}
+                                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-850 focus:ring-1 focus:ring-[#559b8c]"
+                                          placeholder="Nhập tên giảng viên ngoài..."
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                {(day.afternoonInstructors || []).length === 0 && (
+                                  <div className="text-[11px] text-slate-400 italic">Chưa phân công buổi chiều</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Phòng học */}
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                Phòng học
+                              </label>
+                              {!day.classroom && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleUpdateStudyDay(day.id, { classroom: ' ' });
+                                  }}
+                                  className="p-1 rounded-md text-[#559b8c] hover:bg-[#559b8c]/10 cursor-pointer transition-colors"
+                                  title="Thêm Phòng học"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            {day.classroom && (
+                              <div className="space-y-1.5 w-full">
+                                <div className="flex items-center gap-1.5">
+                                  <select
+                                    value={
+                                      !day.classroom || day.classroom.trim() === "" 
+                                        ? "" 
+                                        : activeClassrooms.some(room => room.name === day.classroom.trim())
+                                          ? day.classroom.trim()
+                                          : "other"
+                                    }
+                                    onChange={(e) => {
+                                      if (e.target.value === "other") {
+                                        handleUpdateStudyDay(day.id, { classroom: "Cơ sở khác: " });
+                                      } else {
+                                        handleUpdateStudyDay(day.id, { classroom: e.target.value });
+                                      }
+                                    }}
+                                    className="flex-1 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                  >
+                                    <option value="">-- Chưa chọn --</option>
+                                    {activeClassrooms.map(room => (
+                                      <option key={room.id} value={room.name}>
+                                        {room.name}
+                                      </option>
+                                    ))}
+                                    <option value="other">Cơ sở khác</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateStudyDay(day.id, { classroom: '' });
+                                    }}
+                                    className="p-1 text-rose-500 hover:text-rose-700 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                    title="Xóa phòng học"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
                                 </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  {/* Giảng viên */}
-                                  <div className="space-y-1">
-                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                      Giảng viên
-                                    </label>
+                                {day.classroom && day.classroom.trim() !== "" && !activeClassrooms.some(room => room.name === day.classroom.trim()) && (
+                                  <input
+                                    type="text"
+                                    placeholder="Nhập tên Cơ sở khác..."
+                                    value={day.classroom.startsWith("Cơ sở khác: ") ? day.classroom.substring(12) : day.classroom}
+                                    onChange={(e) => {
+                                      handleUpdateStudyDay(day.id, { classroom: `Cơ sở khác: ${e.target.value}` });
+                                    }}
+                                    className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Phụ giảng */}
+                          <div className="space-y-4 p-3 bg-white/50 border border-slate-200/80 rounded-xl text-left">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-[10px] font-black text-[#559b8c] uppercase tracking-wider">
+                                Phụ giảng (TA)
+                              </label>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = day.morningTaOfficers || [];
+                                    handleUpdateStudyDay(day.id, { morningTaOfficers: [...current, ''] });
+                                  }}
+                                  className="text-[9px] font-bold text-[#559b8c] hover:bg-[#559b8c]/10 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                                  title="Thêm Phụ giảng Sáng"
+                                >
+                                  + Sáng
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = day.afternoonTaOfficers || [];
+                                    handleUpdateStudyDay(day.id, { afternoonTaOfficers: [...current, ''] });
+                                  }}
+                                  className="text-[9px] font-bold text-[#559b8c] hover:bg-[#559b8c]/10 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                                  title="Thêm Phụ giảng Chiều"
+                                >
+                                  + Chiều
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              {/* Sáng list */}
+                              {(day.morningTaOfficers || []).length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider block">Buổi Sáng</span>
+                                  {(day.morningTaOfficers || []).map((ta, taIdx) => (
+                                    <div key={`m-ta-${taIdx}`} className="flex items-center gap-1.5">
+                                      <select
+                                        value={ta}
+                                        onChange={(e) => {
+                                          const current = [...(day.morningTaOfficers || [])];
+                                          current[taIdx] = e.target.value;
+                                          handleUpdateStudyDay(day.id, { morningTaOfficers: current });
+                                        }}
+                                        className="flex-1 text-xs bg-amber-50/50 border border-amber-200/55 rounded-lg p-2 outline-none font-semibold text-slate-700 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                      >
+                                        <option value="">-- Chọn TA Sáng --</option>
+                                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                          <option key={m.id} value={m.name}>
+                                            {m.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const current = (day.morningTaOfficers || []).filter((_, idx) => idx !== taIdx);
+                                          handleUpdateStudyDay(day.id, { morningTaOfficers: current });
+                                        }}
+                                        className="p-1 text-rose-500 hover:text-rose-750 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                        title="Xóa phụ giảng sáng này"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Chiều list */}
+                              {(day.afternoonTaOfficers || []).length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-black text-indigo-600 uppercase tracking-wider block">Buổi Chiều</span>
+                                  {(day.afternoonTaOfficers || []).map((ta, taIdx) => (
+                                    <div key={`a-ta-${taIdx}`} className="flex items-center gap-1.5">
+                                      <select
+                                        value={ta}
+                                        onChange={(e) => {
+                                          const current = [...(day.afternoonTaOfficers || [])];
+                                          current[taIdx] = e.target.value;
+                                          handleUpdateStudyDay(day.id, { afternoonTaOfficers: current });
+                                        }}
+                                        className="flex-1 text-xs bg-indigo-50/50 border border-indigo-200/55 rounded-lg p-2 outline-none font-semibold text-slate-700 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                      >
+                                        <option value="">-- Chọn TA Chiều --</option>
+                                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                          <option key={m.id} value={m.name}>
+                                            {m.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const current = (day.afternoonTaOfficers || []).filter((_, idx) => idx !== taIdx);
+                                          handleUpdateStudyDay(day.id, { afternoonTaOfficers: current });
+                                        }}
+                                        className="p-1 text-rose-500 hover:text-rose-750 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                        title="Xóa phụ giảng chiều này"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {(day.morningTaOfficers || []).length === 0 && (day.afternoonTaOfficers || []).length === 0 && (
+                                <div className="text-[11px] text-slate-400 italic">Chưa phân công phụ giảng</div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Trợ giảng */}
+                          <div className="space-y-4 p-3 bg-white/50 border border-slate-200/80 rounded-xl">
+                            {/* Trợ giảng Sáng */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <label className="block text-[10px] font-black text-[#559b8c] uppercase tracking-wider">
+                                  Trợ giảng Buổi Sáng (TG)
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = day.morningTgOfficers || [];
+                                    handleUpdateStudyDay(day.id, { morningTgOfficers: [...current, ''] });
+                                  }}
+                                  className="p-1 rounded-md text-[#559b8c] hover:bg-[#559b8c]/10 cursor-pointer transition-colors"
+                                  title="Thêm Trợ giảng Sáng"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <div className="space-y-1.5">
+                                {(day.morningTgOfficers || []).map((tg, tgIdx) => (
+                                  <div key={tgIdx} className="flex items-center gap-1.5">
                                     <select
-                                      value={data.instructor}
-                                      onChange={(e) => setSubModulesData(prev => ({
-                                        ...prev,
-                                        [subject]: { ...prev[subject], instructor: e.target.value }
-                                      }))}
-                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                      value={tg}
+                                      onChange={(e) => {
+                                        const current = [...(day.morningTgOfficers || [])];
+                                        current[tgIdx] = e.target.value;
+                                        handleUpdateStudyDay(day.id, { morningTgOfficers: current });
+                                      }}
+                                      className="flex-1 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-700 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
                                     >
-                                      <option value="">-- Chưa chọn --</option>
+                                      <option value="">-- Chọn Trợ giảng Sáng --</option>
                                       {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
                                         <option key={m.id} value={m.name}>
                                           {m.name}
                                         </option>
                                       ))}
                                     </select>
-                                  </div>
- 
-                                  {/* Phòng học */}
-                                  <div className="space-y-1">
-                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                      Phòng học
-                                    </label>
-                                    <select
-                                      value={data.classroom}
-                                      onChange={(e) => setSubModulesData(prev => ({
-                                        ...prev,
-                                        [subject]: { ...prev[subject], classroom: e.target.value }
-                                      }))}
-                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const current = (day.morningTgOfficers || []).filter((_, idx) => idx !== tgIdx);
+                                        handleUpdateStudyDay(day.id, { morningTgOfficers: current });
+                                      }}
+                                      className="p-1 text-rose-500 hover:text-rose-700 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                      title="Xóa trợ giảng này"
                                     >
-                                      <option value="">-- Chọn phòng --</option>
-                                      {activeClassrooms.map(room => (
-                                        <option key={room.id} value={room.name}>
-                                          {room.name}
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
+                                {(day.morningTgOfficers || []).length === 0 && (
+                                  <div className="text-[11px] text-slate-400 italic">Chưa phân công buổi sáng</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Trợ giảng Chiều */}
+                            <div className="space-y-1.5 border-t border-slate-150 pt-2.5">
+                              <div className="flex items-center justify-between">
+                                <label className="block text-[10px] font-black text-amber-600 uppercase tracking-wider">
+                                  Trợ giảng Buổi Chiều (TG)
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = day.afternoonTgOfficers || [];
+                                    handleUpdateStudyDay(day.id, { afternoonTgOfficers: [...current, ''] });
+                                  }}
+                                  className="p-1 rounded-md text-amber-600 hover:bg-amber-50 cursor-pointer transition-colors"
+                                  title="Thêm Trợ giảng Chiều"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <div className="space-y-1.5">
+                                {(day.afternoonTgOfficers || []).map((tg, tgIdx) => (
+                                  <div key={tgIdx} className="flex items-center gap-1.5">
+                                    <select
+                                      value={tg}
+                                      onChange={(e) => {
+                                        const current = [...(day.afternoonTgOfficers || [])];
+                                        current[tgIdx] = e.target.value;
+                                        handleUpdateStudyDay(day.id, { afternoonTgOfficers: current });
+                                      }}
+                                      className="flex-1 text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-700 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                    >
+                                      <option value="">-- Chọn Trợ giảng Chiều --</option>
+                                      {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => (
+                                        <option key={m.id} value={m.name}>
+                                          {m.name}
                                         </option>
                                       ))}
                                     </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const current = (day.afternoonTgOfficers || []).filter((_, idx) => idx !== tgIdx);
+                                        handleUpdateStudyDay(day.id, { afternoonTgOfficers: current });
+                                      }}
+                                      className="p-1 text-rose-500 hover:text-rose-700 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
+                                      title="Xóa trợ giảng này"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
                                   </div>
- 
-                                  {/* Ngày học */}
-                                  <div className="space-y-1">
-                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                      Ngày học
-                                    </label>
-                                    <input
-                                      type="date"
-                                      value={data.date}
-                                      onChange={(e) => setSubModulesData(prev => ({
-                                        ...prev,
-                                        [subject]: { ...prev[subject], date: e.target.value }
-                                      }))}
-                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                                    />
-                                  </div>
- 
-                                  {/* Thời gian */}
-                                  <div className="space-y-1">
-                                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                      Giờ học (Từ - Đến)
-                                    </label>
-                                    <div className="flex items-center gap-1.5">
-                                      <input
-                                        type="time"
-                                        value={data.startTime}
-                                        onChange={(e) => setSubModulesData(prev => ({
-                                          ...prev,
-                                          [subject]: { ...prev[subject], startTime: e.target.value }
-                                        }))}
-                                        className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                                      />
-                                      <span className="text-[10px] text-slate-400 font-bold">-</span>
-                                      <input
-                                        type="time"
-                                        value={data.endTime}
-                                        onChange={(e) => setSubModulesData(prev => ({
-                                          ...prev,
-                                          [subject]: { ...prev[subject], endTime: e.target.value }
-                                        }))}
-                                        className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                                      />
-                                    </div>
-                                  </div>
- 
-                                  {/* Phụ giảng (Chỉ hiện cho môn có chữ (P)) */}
-                                  {subject.includes('(P)') && (
-                                    <div className="space-y-1.5 col-span-1 md:col-span-2 border-t border-slate-100 pt-2 px-0.5 mt-1">
-                                      <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                        Phụ giảng môn {subject} (Chọn nhiều)
-                                      </label>
-                                      <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg max-h-[110px] overflow-y-auto">
-                                        {members.filter(m => m.email.toLowerCase() !== 'setcadmin' && m.email.toLowerCase() !== 'setcadmin@safetycentre.org').map(m => {
-                                          const isSelected = (data.taOfficers || []).includes(m.name);
-                                          return (
-                                            <button
-                                              key={m.id}
-                                              type="button"
-                                              onClick={() => {
-                                                const current = data.taOfficers || [];
-                                                const next = isSelected 
-                                                  ? current.filter(name => name !== m.name)
-                                                  : [...current, m.name];
-                                                setSubModulesData(prev => ({
-                                                  ...prev,
-                                                  [subject]: { ...prev[subject], taOfficers: next }
-                                                }));
-                                              }}
-                                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
-                                                isSelected
-                                                  ? 'bg-[#559b8c] text-white shadow-3xs'
-                                                  : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-700'
-                                              }`}
-                                            >
-                                              {isSelected && <span className="mr-0.5 text-[9px]">✓</span>}
-                                              {m.name}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                                ))}
+                                {(day.afternoonTgOfficers || []).length === 0 && (
+                                  <div className="text-[11px] text-slate-400 italic">Chưa phân công buổi chiều</div>
+                                )}
                               </div>
-                            );
-                          })}
+                            </div>
+                          </div>
+
+                          {/* Giờ học */}
+                          <div className="col-span-1 sm:col-span-2 grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                Giờ bắt đầu
+                              </label>
+                              <input
+                                type="text"
+                                value={day.startTime}
+                                onChange={(e) => handleUpdateStudyDay(day.id, { startTime: e.target.value })}
+                                placeholder="08:00"
+                                className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 text-center focus:ring-1 focus:ring-[#559b8c]"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                Giờ kết thúc
+                              </label>
+                              <input
+                                type="text"
+                                value={day.endTime}
+                                onChange={(e) => handleUpdateStudyDay(day.id, { endTime: e.target.value })}
+                                placeholder="16:30"
+                                className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-800 text-center focus:ring-1 focus:ring-[#559b8c]"
+                              />
+                            </div>
+                          </div>
                         </div>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
+                </div>
 
-                  {/* Duration Hours & Number of Learners */}
-                  {!isOpitoBosiet && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-left">
-                      <div>
-                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                          Giờ Lên lớp (Từ - Đến)
-                        </label>
-                        <div className="flex items-center gap-1 flex-row">
-                          <input
-                            id="assign-input-start-time"
-                            type="text"
-                            required
-                            value={assignStartTime}
-                            onChange={(e) => setAssignStartTime(e.target.value)}
-                            className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
-                            placeholder="08:00"
-                          />
-                          <span className="text-slate-400 font-bold px-2 shrink-0">-</span>
-                          <input
-                            id="assign-input-end-time"
-                            type="text"
-                            required
-                            value={assignEndTime}
-                            onChange={(e) => setAssignEndTime(e.target.value)}
-                            className="w-1/2 text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none text-center font-mono font-bold focus:ring-1 focus:ring-[#559b8c]"
-                            placeholder="16:30"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10.5px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                          Sĩ số
-                        </label>
-                        <input
-                          id="assign-input-capacity"
-                          type="number"
-                          required
-                          value={assignCapacity}
-                          onChange={(e) => setAssignCapacity(parseInt(e.target.value) || 20)}
-                          min={1}
-                          max={100}
-                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
-                          placeholder="Ví dụ: 25"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Feedback Message */}
-                  {assignFeedback && (
-                    <div 
-                      id="assign-form-feedback" 
-                      className={`p-3 rounded-xl border flex items-start gap-2 text-xs font-semibold text-left flex-row ${
-                        assignFeedback.type === 'success' 
-                          ? 'bg-emerald-50 border-emerald-250 text-emerald-900' 
-                          : 'bg-amber-50 border-amber-250 text-amber-950'
-                      }`}
-                    >
-                      {assignFeedback.type === 'error' ? (
-                        <AlertTriangle className="h-4.5 w-4.5 text-amber-700 shrink-0 mt-0.5" />
-                      ) : (
-                        <Plus className="h-4.5 w-4.5 text-emerald-700 shrink-0 mt-0.5" />
-                      )}
-                      <span>{assignFeedback.message}</span>
-                    </div>
-                  )}
-
-                  {/* Submit Button */}
-                  <div className="flex justify-end pt-2">
-                    <button
-                      id="publish-course-assignment-btn"
-                      type="submit"
-                      disabled={activeConflicts.length > 0}
-                      className={`text-xs font-black min-w-[200px] leading-none px-4.5 py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] ${
-                        activeConflicts.length > 0
-                          ? 'bg-slate-200 text-slate-450 border border-slate-300 cursor-not-allowed shadow-none'
-                          : 'bg-[#559b8c] hover:bg-[#3f766a] text-white hover:shadow-lg cursor-pointer'
-                      }`}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Xác nhận
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              {/* Right Column: Conflict Check and Note Box (5cols) */}
-              <div className="lg:col-span-5 p-6 bg-slate-50/60 overflow-y-auto max-h-[calc(92vh-140px)] flex flex-col space-y-6 text-left">
-                
-                {/* Conflict Check Section */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-200 flex-row">
-                    <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <ShieldAlert className="h-4 w-4 text-amber-600 shrink-0" />
-                      Kiểm tra Xung đột Lịch
-                    </h4>
-                    <span id="active-conflict-count-badge" className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                      activeConflicts.length > 0 
-                        ? 'bg-rose-100 text-rose-800' 
-                        : 'bg-emerald-100 text-emerald-800'
-                    }`}>
-                      {activeConflicts.length} {activeConflicts.length === 1 ? 'Xung đột' : 'Xung đột'}
+                {/* Bảng Kiểm tra Trùng lặp / Conflict */}
+                <div id="conflict-checker-section" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-3xs space-y-3.5 text-left">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <AlertTriangle className={`h-4.5 w-4.5 ${currentStudyDaysConflicts.length > 0 ? 'text-amber-500 animate-pulse' : 'text-slate-450'}`} />
+                      Bảng Kiểm tra Trùng lặp / Conflict ({currentStudyDaysConflicts.length})
                     </span>
                   </div>
-
-                  {activeConflicts.length > 0 ? (
-                    <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
-                      {activeConflicts.map((c, idx) => (
-                        <div 
-                          key={idx} 
-                          id={`conflict-warning-item-${idx}`}
-                          className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1.5 leading-normal text-xs text-left"
-                        >
-                          <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-[10px] uppercase tracking-wide">
-                            <span className="px-1.5 py-0.5 rounded bg-amber-100 border border-amber-200 text-amber-800 font-black">
-                              Trùng lịch {c.type}
-                            </span>
-                          </div>
-                          
-                          <p className="text-xs text-amber-955 font-bold leading-normal text-left">
-                            {c.message}
-                          </p>
-
-                          <div className="text-[10px] text-slate-650 bg-white/70 p-2 rounded border border-slate-100 space-y-0.5 leading-normal font-medium text-left">
-                            <div>
-                              <span className="font-extrabold text-slate-500">Môn học:</span> "{c.courseTitle}"
-                            </div>
-                            <div>
-                              <span className="font-extrabold text-slate-500">Thời gian:</span> {formatDate(c.conflictingSession.startDate)} đến {formatDate(c.conflictingSession.endDate)}
-                            </div>
-                            <div>
-                              <span className="font-extrabold text-slate-500">Khung giờ:</span> {c.conflictingSession.startTime} - {c.conflictingSession.endTime}
-                            </div>
-                            <div>
-                              <span className="font-extrabold text-slate-500">Phòng học:</span> {c.conflictingSession.classroom}
-                            </div>
-                            <div>
-                              <span className="font-extrabold text-slate-500">Giảng viên:</span> {c.conflictingSession.instructor.split(' (')[0]}
-                            </div>
-                            {c.conflictingSession.taOfficer && (
-                              <div>
-                                <span className="font-extrabold text-slate-500">Phụ giảng:</span> {c.conflictingSession.taOfficer}
-                              </div>
-                            )}
-                            {c.conflictingSession.tgOfficer && (
-                              <div>
-                                <span className="font-extrabold text-slate-500">Trợ giảng:</span> {c.conflictingSession.tgOfficer}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  
+                  {currentStudyDaysConflicts.length === 0 ? (
+                    <p className="text-xs font-semibold text-emerald-700 bg-emerald-50/40 p-3.5 rounded-xl border border-emerald-200/60 flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                      ✓ Tuyệt vời! Không phát hiện trùng lặp/conflict nào về nhân sự hay phòng học. Lịch trình hoàn toàn an toàn để đăng ký.
+                    </p>
                   ) : (
-                    <div id="no-conflicts-status-card" className="bg-emerald-50 border border-emerald-150 rounded-xl p-4 text-center space-y-2 text-xs">
-                      <div className="mx-auto h-9 w-9 rounded-full bg-emerald-100/80 flex items-center justify-center text-emerald-700">
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                        </svg>
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="text-[11px] font-black text-emerald-900 uppercase tracking-wider">Không tìm thấy Xung đột</p>
-                        <p className="text-[10px] text-emerald-700 font-medium leading-relaxed">
-                          Sự phân bố Phòng học, Giảng viên và Nhân sự trợ giảng hoàn toàn hợp lệ trong khung thời gian học của lớp học này.
-                        </p>
-                      </div>
+                    <div className="overflow-hidden border border-slate-200 rounded-xl shadow-4xs">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-200">
+                            <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Ngày học &amp; Học phần</th>
+                            <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Tên nhân sự</th>
+                            <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Phòng học</th>
+                            <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Vai trò</th>
+                            <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Chi tiết trùng lặp</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {currentStudyDaysConflicts.map((conf, index) => (
+                            <tr key={conf.id || index} className="hover:bg-slate-50/40 transition-colors">
+                              <td className="p-3 text-xs font-bold text-slate-700 whitespace-nowrap">{conf.moduleName} ({conf.date})</td>
+                              <td className="p-3 text-xs font-semibold text-rose-600">
+                                {conf.personnel !== '-' ? conf.personnel : <span className="text-slate-350">—</span>}
+                              </td>
+                              <td className="p-3 text-xs font-semibold text-amber-600">
+                                {conf.classroom !== '-' ? conf.classroom : <span className="text-slate-350">—</span>}
+                              </td>
+                              <td className="p-3 text-xs">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                                  conf.role === 'Giảng viên' ? 'bg-indigo-50 text-indigo-700 border border-indigo-150' :
+                                  conf.role === 'Phụ giảng' ? 'bg-cyan-50 text-cyan-700 border border-cyan-150' :
+                                  conf.role === 'Trợ giảng' ? 'bg-sky-50 text-sky-700 border border-sky-150' :
+                                  'bg-amber-50 text-amber-700 border border-amber-150' // Classroom
+                                }`}>
+                                  {conf.role}
+                                </span>
+                              </td>
+                              <td className="p-3 text-xs text-slate-650 font-medium">{conf.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>
 
-                {/* Note Box for the Task Giver */}
-                <div className="space-y-2 pt-3 border-t border-slate-200">
-                  <label htmlFor="assign-notes-textarea" className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
-                    📋 Ghi chú
-                  </label>
-                  <textarea
-                    id="assign-notes-textarea"
-                    rows={4}
-                    value={assignNote}
-                    onChange={(e) => setAssignNote(e.target.value)}
-                    placeholder=""
-                    className="w-full text-xs bg-white border border-slate-200 rounded-xl p-3 outline-none focus:ring-1 focus:ring-[#559b8c] font-semibold resize-none text-slate-800 leading-relaxed shadow-3xs"
-                  />
+                {/* Submit Button */}
+                <div className="flex justify-end pt-2">
+                  <button
+                    id="publish-course-assignment-btn"
+                    type="submit"
+                    className="text-xs font-black min-w-[200px] leading-none px-4.5 py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] bg-[#559b8c] hover:bg-[#3f766a] text-white hover:shadow-lg cursor-pointer"
+                  >
+                    {editingSessionId ? <Settings className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                    {editingSessionId ? "Cập nhật Lớp học" : "Xác nhận"}
+                  </button>
                 </div>
-
-              </div>
-
+              </form>
             </div>
 
           </div>
@@ -1868,7 +3243,10 @@ export default function TimelineView({
                 id="open-courses-assignment-btn"
                 type="button"
                 onClick={() => {
+                  setEditingSessionId(null);
                   setIsAssignmentModalOpen(true);
+                  setAssignStudentsCount(0);
+                  setAssignSessionCode('');
                   // Prefill course structures dynamically
                   if (courses.length > 0) {
                     const first = courses.find(c => c.id === selCourseId) || courses[0];
@@ -1968,8 +3346,11 @@ export default function TimelineView({
                 <th rowSpan={2} className="p-3 font-extrabold text-slate-700 text-center border-r border-slate-200 bg-slate-100/80 w-[60px] min-w-[60px] uppercase">
                   TG
                 </th>
-                <th rowSpan={2} className="p-3 font-extrabold text-slate-700 text-center bg-slate-100/80 w-[60px] min-w-[60px] uppercase">
+                <th rowSpan={2} className="p-3 font-extrabold text-slate-700 text-center border-r border-slate-200 bg-slate-100/80 w-[60px] min-w-[60px] uppercase">
                   TA
+                </th>
+                <th rowSpan={2} className="p-3 font-extrabold text-slate-700 text-center bg-slate-100/80 w-[60px] min-w-[60px] uppercase">
+                  TT
                 </th>
               </tr>
               {/* Row 2: Morning/Afternoon/Periods sub-headers */}
@@ -1989,13 +3370,78 @@ export default function TimelineView({
             </thead>
             <tbody>
               {sortedTrackingMembers.length > 0 ? (
-                sortedTrackingMembers.map(member => {
+                sortedTrackingMembers.map((member, mIdx) => {
                   const stats = calculateWeeklyStats(member);
+                  
+                  // Helper to get primary department
+                  const getPrimaryDept = (m: Member): string => {
+                    const depts = getMemberDepartments(m);
+                    const allowedDepts = ['Ban Giám đốc', 'Tổ đào tạo', 'Tổ Thiết bị', 'Tổ hành chính'];
+                    for (const d of allowedDepts) {
+                      if (depts.includes(d)) return d;
+                    }
+                    return 'Khác';
+                  };
+
+                  const primaryDept = getPrimaryDept(member);
+                  
+                  // Style configurations based on primary department
+                  const getDeptStyle = (m: Member) => {
+                    const primary = getPrimaryDept(m);
+                    if (primary === 'Ban Giám đốc') {
+                      return {
+                        row: 'bg-[#f4f6ff]/40 hover:bg-[#ebf0ff]/60 transition-colors',
+                        sticky: 'bg-[#f0f2ff]', // soft solid indigo
+                        badge: 'bg-indigo-100/70 text-indigo-800 border-indigo-200/50',
+                        text: 'text-indigo-950 font-black',
+                        tag: 'Ban Giám đốc'
+                      };
+                    }
+                    if (primary === 'Tổ đào tạo') {
+                      return {
+                        row: 'bg-[#fffcf4]/50 hover:bg-[#fff7e0]/70 transition-colors',
+                        sticky: 'bg-[#fffcf0]', // soft solid amber
+                        badge: 'bg-amber-100/70 text-amber-800 border-amber-250/50',
+                        text: 'text-amber-950 font-black',
+                        tag: 'Tổ đào tạo'
+                      };
+                    }
+                    if (primary === 'Tổ Thiết bị') {
+                      return {
+                        row: 'bg-[#f0f9ff]/40 hover:bg-[#e0f2fe]/60 transition-colors',
+                        sticky: 'bg-[#f0f9ff]', // soft solid sky
+                        badge: 'bg-sky-100/70 text-sky-800 border-sky-200/50',
+                        text: 'text-sky-950 font-black',
+                        tag: 'Tổ Thiết bị'
+                      };
+                    }
+                    if (primary === 'Tổ hành chính') {
+                      return {
+                        row: 'bg-[#f0fdf4]/40 hover:bg-[#dcfce7]/60 transition-colors',
+                        sticky: 'bg-[#f0fdf4]', // soft solid mint
+                        badge: 'bg-emerald-100/70 text-emerald-800 border-emerald-200/50',
+                        text: 'text-emerald-950 font-black',
+                        tag: 'Tổ hành chính'
+                      };
+                    }
+                    return {
+                      row: 'bg-slate-50/20 hover:bg-slate-50/40 transition-colors',
+                      sticky: 'bg-white',
+                      badge: 'bg-slate-100 text-slate-700 border-slate-200',
+                      text: 'text-slate-900',
+                      tag: 'Khác'
+                    };
+                  };
+
+                  const deptStyle = getDeptStyle(member);
+                  const isNewDept = mIdx > 0 && getPrimaryDept(sortedTrackingMembers[mIdx - 1]) !== primaryDept;
+                  const rowBorderClass = isNewDept ? 'border-t-2 border-t-slate-400 border-b border-b-slate-200' : 'border-b border-b-slate-200';
+
                   return (
-                    <tr key={member.id} className="hover:bg-slate-50/30 transition-colors border-b border-slate-100">
-                      <td className="p-3 font-bold text-slate-900 border-r border-slate-200 bg-white sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                    <tr key={member.id} className={`${deptStyle.row} border-b border-b-slate-200`}>
+                      <td className={`p-3 font-bold border-r border-r-slate-200 sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.03)] ${deptStyle.sticky} ${rowBorderClass}`}>
                         <div className="flex flex-col text-left">
-                          <span className="text-xs text-slate-900 font-extrabold truncate max-w-[170px]" title={member.name}>{member.name}</span>
+                          <span className={`text-xs truncate max-w-[170px] ${deptStyle.text}`} title={member.name}>{member.name}</span>
                         </div>
                       </td>
                       {trackingDays.map((date, idx) => {
@@ -2011,18 +3457,11 @@ export default function TimelineView({
                         return (
                           <Fragment key={idx}>
                             {/* Morning Slot */}
-                            <td className={`p-2 border-r border-slate-150 align-top ${cellClass} text-center min-w-[75px]`}>
+                            <td className={`p-2 border-r border-r-slate-200 align-top ${cellClass} text-center min-w-[75px] ${rowBorderClass}`}>
                               {morningAssignments.length > 0 ? (
                                 <div className="flex flex-col gap-1.5">
-                                  {morningAssignments.map((assign, aIdx) => {
-                                    const isGv = assign.toLowerCase().endsWith(', gv');
-                                    const isTa = assign.toLowerCase().endsWith(', ta');
-                                    const isTg = assign.toLowerCase().endsWith(', tg');
-                                    
-                                    let badgeBg = 'bg-slate-50 border-slate-200 text-slate-700';
-                                    if (isGv) badgeBg = 'bg-amber-50 text-amber-900 border-amber-250 font-black';
-                                    else if (isTa) badgeBg = 'bg-teal-50 text-teal-900 border-teal-250 font-black';
-                                    else if (isTg) badgeBg = 'bg-sky-50 text-sky-900 border-sky-250 font-black';
+                                  {formatAssignmentStrings(morningAssignments).map((assign, aIdx) => {
+                                    const badgeBg = getCourseBadgeColor(assign);
                                     
                                     return (
                                       <div 
@@ -2041,18 +3480,11 @@ export default function TimelineView({
                             </td>
                             
                             {/* Afternoon Slot */}
-                            <td className={`p-2 border-r border-slate-150 align-top ${cellClass} text-center min-w-[75px]`}>
+                            <td className={`p-2 border-r border-r-slate-200 align-top ${cellClass} text-center min-w-[75px] ${rowBorderClass}`}>
                               {afternoonAssignments.length > 0 ? (
                                 <div className="flex flex-col gap-1.5">
-                                  {afternoonAssignments.map((assign, aIdx) => {
-                                    const isGv = assign.toLowerCase().endsWith(', gv');
-                                    const isTa = assign.toLowerCase().endsWith(', ta');
-                                    const isTg = assign.toLowerCase().endsWith(', tg');
-                                    
-                                    let badgeBg = 'bg-slate-50 border-slate-200 text-slate-700';
-                                    if (isGv) badgeBg = 'bg-amber-50 text-amber-900 border-amber-250 font-black';
-                                    else if (isTa) badgeBg = 'bg-teal-50 text-teal-900 border-teal-250 font-black';
-                                    else if (isTg) badgeBg = 'bg-sky-50 text-sky-900 border-sky-250 font-black';
+                                  {formatAssignmentStrings(afternoonAssignments).map((assign, aIdx) => {
+                                    const badgeBg = getCourseBadgeColor(assign);
                                     
                                     return (
                                       <div 
@@ -2071,9 +3503,9 @@ export default function TimelineView({
                             </td>
                             
                             {/* Teaching periods for Lecturers (GV) */}
-                            <td className={`p-2 border-r border-slate-200 align-middle ${cellClass} text-center font-mono text-[11.5px] font-bold text-amber-800 bg-amber-50/15`}>
+                            <td className={`p-2 border-r border-r-slate-200 align-middle ${cellClass} text-center font-mono text-[11.5px] font-bold text-amber-800 bg-amber-50/15 ${rowBorderClass}`}>
                               {dayPeriods > 0 ? (
-                                <span>{dayPeriods === Math.floor(dayPeriods) ? dayPeriods : dayPeriods.toFixed(1)}</span>
+                                <span>{dayPeriods}</span>
                               ) : (
                                 <span className="text-slate-300 font-normal italic">-</span>
                               )}
@@ -2082,7 +3514,7 @@ export default function TimelineView({
                         );
                       })}
                       {/* TG Summary Column */}
-                      <td className="p-3 font-mono font-black text-center border-r border-slate-200 bg-slate-50/40 text-xs">
+                      <td className={`p-3 font-mono font-black text-center border-r border-r-slate-200 bg-slate-50/40 text-xs ${rowBorderClass}`}>
                         {stats.tgTotal > 0 ? (
                           <span className="px-1.5 py-0.5 bg-sky-50 text-sky-800 rounded border border-sky-200 shadow-3xs">
                             {stats.tgTotal}
@@ -2092,10 +3524,20 @@ export default function TimelineView({
                         )}
                       </td>
                       {/* TA Summary Column */}
-                      <td className="p-3 font-mono font-black text-center bg-slate-50/40 text-xs">
+                      <td className={`p-3 font-mono font-black text-center border-r border-r-slate-200 bg-slate-50/40 text-xs ${rowBorderClass}`}>
                         {stats.taTotal > 0 ? (
                           <span className="px-1.5 py-0.5 bg-teal-50 text-teal-800 rounded border border-teal-200 shadow-3xs">
                             {stats.taTotal}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 font-normal italic">-</span>
+                        )}
+                      </td>
+                      {/* TT Summary Column */}
+                      <td className={`p-3 font-mono font-black text-center bg-slate-50/40 text-xs ${rowBorderClass}`}>
+                        {stats.ttTotal > 0 ? (
+                          <span className="px-1.5 py-0.5 bg-amber-50 text-amber-800 rounded border border-amber-200 shadow-3xs">
+                            {stats.ttTotal === Math.floor(stats.ttTotal) ? stats.ttTotal : stats.ttTotal.toFixed(1)}
                           </span>
                         ) : (
                           <span className="text-slate-300 font-normal italic">-</span>
@@ -2106,7 +3548,7 @@ export default function TimelineView({
                 })
               ) : (
                 <tr>
-                  <td colSpan={24} className="p-8 text-center text-xs text-slate-400 font-bold font-serif bg-slate-50/50">
+                  <td colSpan={25} className="p-8 text-center text-xs text-slate-400 font-bold font-serif bg-slate-50/50">
                     Không có thành viên nào hoạt động trong danh mục chung.
                   </td>
                 </tr>
@@ -2579,8 +4021,8 @@ export default function TimelineView({
                         <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Sĩ số tối đa</label>
                         <input 
                           type="number"
-                          value={editMaxCapacity}
-                          onChange={(e) => setEditMaxCapacity(parseInt(e.target.value) || 20)}
+                          value={isNaN(editMaxCapacity) ? '' : editMaxCapacity}
+                          onChange={(e) => setEditMaxCapacity(parseInt(e.target.value))}
                           min={1}
                           max={100}
                           className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-bold text-slate-850 focus:ring-1 focus:ring-[#559b8c]"
@@ -2843,10 +4285,134 @@ export default function TimelineView({
                                         <option value="Sân diễn tập Phòng cháy Chữa cháy (PCCC)" />
                                         <option value="Bãi thực hành giàn giáo & Làm việc trên cao" />
                                         <option value="Bể bơi huấn luyện Sinh tồn dưới nước (HUET)" />
-                                        <option value="Phòng giả lập Không gian hạn chế" />
+                                        <option value="Phòng giả làm Không gian hạn chế" />
                                         <option value="Khu huấn luyện Sơ cấp cứu thực tế" />
                                         <option value="Sân huấn luyện An toàn Lao động ngoài trời" />
                                       </datalist>
+                                    </div>
+                                  </div>
+
+                                  {/* Giờ học */}
+                                  <div className="col-span-1 md:col-span-2 grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                        Giờ bắt đầu
+                                      </label>
+                                      <input
+                                        type="time"
+                                        value={data.startTime || '08:00'}
+                                        onChange={(e) => setEditSubModules(prev => ({
+                                          ...prev,
+                                          [key]: { ...prev[key], startTime: e.target.value }
+                                        }))}
+                                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                        Giờ kết thúc
+                                      </label>
+                                      <input
+                                        type="time"
+                                        value={data.endTime || '16:30'}
+                                        onChange={(e) => setEditSubModules(prev => ({
+                                          ...prev,
+                                          [key]: { ...prev[key], endTime: e.target.value }
+                                        }))}
+                                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Nhân sự */}
+                                  <div className="col-span-1 md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1.5 border-t border-slate-100 mt-1">
+                                    <div>
+                                      <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                        Giảng viên
+                                      </label>
+                                      <select
+                                        value={data.instructor && !sortedTrackingMembers.some(m => m.name === data.instructor) && data.instructor !== "" ? "external" : (data.instructor || '')}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setEditSubModules(prev => ({
+                                            ...prev,
+                                            [key]: { 
+                                              ...prev[key], 
+                                              instructor: val === "external" ? "Giảng viên ngoài: " : val 
+                                            }
+                                          }));
+                                        }}
+                                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                      >
+                                        <option value="">-- Chọn Giảng viên --</option>
+                                        {sortedTrackingMembers.map(m => (
+                                          <option key={m.id} value={m.name}>
+                                            {m.name}
+                                          </option>
+                                        ))}
+                                        <option value="external">Giảng viên ngoài</option>
+                                      </select>
+                                      {data.instructor && !sortedTrackingMembers.some(m => m.name === data.instructor) && data.instructor !== "" && (
+                                        <input
+                                          type="text"
+                                          value={data.instructor.startsWith("Giảng viên ngoài: ") ? data.instructor.substring("Giảng viên ngoài: ".length) : data.instructor}
+                                          onChange={(e) => {
+                                            const val = "Giảng viên ngoài: " + e.target.value;
+                                            setEditSubModules(prev => ({
+                                              ...prev,
+                                              [key]: { ...prev[key], instructor: val }
+                                            }));
+                                          }}
+                                          className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-850 focus:ring-1 focus:ring-[#559b8c] mt-1"
+                                          placeholder="Nhập tên giảng viên ngoài..."
+                                        />
+                                      )}
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                        Phụ giảng
+                                      </label>
+                                      <select
+                                        value={data.taOfficer || ''}
+                                        onChange={(e) => setEditSubModules(prev => ({
+                                          ...prev,
+                                          [key]: { ...prev[key], taOfficer: e.target.value }
+                                        }))}
+                                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                      >
+                                        <option value="">-- Trống --</option>
+                                        {sortedTrackingMembers
+                                          .filter(m => !getMemberDepartments(m).some(d => d.toLowerCase().includes('hành chính')))
+                                          .map(m => (
+                                            <option key={m.id} value={m.name}>
+                                              {m.name}
+                                            </option>
+                                          ))}
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                        Trợ giảng
+                                      </label>
+                                      <select
+                                        value={data.tgOfficer || ''}
+                                        onChange={(e) => setEditSubModules(prev => ({
+                                          ...prev,
+                                          [key]: { ...prev[key], tgOfficer: e.target.value }
+                                        }))}
+                                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none font-semibold text-slate-800 focus:ring-1 focus:ring-[#559b8c] cursor-pointer"
+                                      >
+                                        <option value="">-- Trống --</option>
+                                        {sortedTrackingMembers
+                                          .filter(m => !getMemberDepartments(m).some(d => d.toLowerCase().includes('giám đốc')))
+                                          .map(m => (
+                                            <option key={m.id} value={m.name}>
+                                              {m.name}
+                                            </option>
+                                          ))}
+                                      </select>
                                     </div>
                                   </div>
                                 </div>
@@ -2905,8 +4471,8 @@ export default function TimelineView({
                       <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Sĩ số tối đa lớp học</label>
                       <input 
                         type="number"
-                        value={editMaxCapacity}
-                        onChange={(e) => setEditMaxCapacity(parseInt(e.target.value) || 20)}
+                        value={isNaN(editMaxCapacity) ? '' : editMaxCapacity}
+                        onChange={(e) => setEditMaxCapacity(parseInt(e.target.value))}
                         min={1}
                         max={100}
                         className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-800 focus:ring-1 focus:ring-[#559b8c]"
@@ -3162,44 +4728,23 @@ export default function TimelineView({
                       <Trash2 className="h-3.5 w-3.5" />
                       Gỡ lịch
                     </button>
-                    {!isEditingSession && (
-                      <button
-                        type="button"
-                        onClick={handleStartEditingSession}
-                        className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1 border border-emerald-100 flex-row"
-                        title="Thay đổi tham số lịch học"
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                        Chỉnh sửa
-                      </button>
-                    )}
-                  </div>
-                  {isEditingSession ? (
-                    <div className="flex gap-2 flex-row">
-                      <button
-                        type="button"
-                        onClick={handleCancelEditingSession}
-                        className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
-                      >
-                        Hủy bỏ
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSaveSessionUpdates}
-                        className="px-4 py-2 bg-[#559b8c] hover:bg-[#3f766a] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-3xs"
-                      >
-                        Lưu thông số
-                      </button>
-                    </div>
-                  ) : (
                     <button
                       type="button"
-                      onClick={() => setPopupCourseSession(null)}
-                      className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-750 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                      onClick={handleStartEditingSession}
+                      className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1 border border-emerald-100 flex-row"
+                      title="Thay đổi tham số lịch học"
                     >
-                      Đóng Chi tiết
+                      <Settings className="h-3.5 w-3.5" />
+                      Chỉnh sửa
                     </button>
-                  )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPopupCourseSession(null)}
+                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-750 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  >
+                    Đóng Chi tiết
+                  </button>
                 </div>
               ) : (
                 <div className="flex justify-end w-full">
